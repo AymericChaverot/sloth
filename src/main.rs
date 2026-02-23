@@ -65,26 +65,37 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new();
 
     // Start TUI
-    if let Some((path, branches, stashes)) = ui::run_tui(state, rx)? {
-        if branches.is_empty() && stashes.is_empty() {
-            println!("No branches or stashes selected for deletion.");
-        } else {
-            println!(
-                "\nExecuting CleanRepo on {} (Dry-run false)...",
-                path.display()
-            );
-
-            let results = engine::execute_batch(
-                vec![path],
-                engine::Action::CleanRepo { branches, stashes },
-                false, // REAL EXECUTION!
-            )
-            .await;
-
-            for res in results {
-                let symbol = if res.success { "✅" } else { "❌" };
-                println!("{} {}: {}", symbol, res.repo_path.display(), res.message);
+    if let Some((path, action, branches, stashes)) = ui::run_tui(state, rx)? {
+        let engine_action = match action {
+            ui::UiAction::CleanRepo => {
+                if branches.is_empty() && stashes.is_empty() {
+                    println!("No branches or stashes selected for deletion.");
+                    return Ok(());
+                }
+                engine::Action::CleanRepo { branches, stashes }
             }
+            ui::UiAction::PruneRemotes => engine::Action::PruneRemotes,
+        };
+
+        println!(
+            "\nExecuting {} on {} (Dry-run false)...",
+            match engine_action {
+                engine::Action::CleanRepo { .. } => "CleanRepo",
+                engine::Action::PruneRemotes => "PruneRemotes",
+            },
+            path.display()
+        );
+
+        let results = engine::execute_batch(
+            vec![path],
+            engine_action,
+            false, // REAL EXECUTION!
+        )
+        .await;
+
+        for res in results {
+            let symbol = if res.success { "✅" } else { "❌" };
+            println!("{} {}: {}", symbol, res.repo_path.display(), res.message);
         }
     } else {
         println!("No action executed.");

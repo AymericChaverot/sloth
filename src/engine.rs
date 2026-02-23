@@ -15,6 +15,7 @@ pub enum Action {
         branches: Vec<String>,
         stashes: Vec<usize>,
     },
+    PruneRemotes,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +82,7 @@ fn format_action(action: &Action) -> String {
                 stashes.len()
             )
         }
+        Action::PruneRemotes => "Prune dead remote tracking branches".to_string(),
     }
 }
 
@@ -132,6 +134,31 @@ async fn execute_action(path: &Path, action: &Action) -> Result<String, EngineEr
             }
 
             Ok(msgs.join(", "))
+        }
+        Action::PruneRemotes => {
+            let out = Command::new("git")
+                .args(["remote", "prune", "origin"])
+                .current_dir(path)
+                .output()
+                .await;
+            if let Ok(o) = out {
+                if o.status.success() {
+                    let mut stdout = String::from_utf8_lossy(&o.stdout).to_string();
+                    if stdout.trim().is_empty() {
+                        stdout = "No dead branches to prune.".to_string();
+                    }
+                    Ok(stdout.trim().to_string())
+                } else {
+                    Ok(format!(
+                        "Failed to prune remotes: {}",
+                        String::from_utf8_lossy(&o.stderr)
+                    ))
+                }
+            } else {
+                Err(EngineError::ExecutionError(
+                    "Command failed to start".to_string(),
+                ))
+            }
         }
     }
 }

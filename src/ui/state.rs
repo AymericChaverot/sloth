@@ -19,6 +19,12 @@ pub enum Focus {
     GitGraph,
 }
 
+#[derive(Debug, Clone)]
+pub enum UiAction {
+    CleanRepo,
+    PruneRemotes,
+}
+
 pub struct AppState {
     pub repositories: Vec<RepoStatus>,
     pub focus: Focus,
@@ -33,7 +39,7 @@ pub struct AppState {
     pub show_graph: bool,
     pub graph_maximized: bool,
     pub should_quit: bool,
-    pub should_execute: bool,
+    pub action: Option<UiAction>,
     pub is_scanning: bool,
     pub is_analyzing: bool,
     pub scanned_count: usize,
@@ -64,7 +70,7 @@ impl AppState {
             show_graph: false,
             graph_maximized: false,
             should_quit: false,
-            should_execute: false,
+            action: None,
             is_scanning: true,
             is_analyzing: true,
             scanned_count: 0,

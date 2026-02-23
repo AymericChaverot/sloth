@@ -8,7 +8,7 @@ use ratatui::{
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut help_text = match state.focus {
         Focus::Repositories => {
-            "Left Pane: Up/Down navigate. Right enter details. 'g' toggle graph. 'q' quit."
+            "Left Pane: Up/Down navigate. Right enter details. 'p' prune remotes. 'g' toggle graph. 'q' quit."
                 .to_string()
         }
         Focus::Details => {

@@ -15,12 +15,12 @@ pub mod components;
 pub mod events;
 pub mod state;
 
-pub use state::{AppState, ScannerEvent};
+pub use state::{AppState, ScannerEvent, UiAction};
 
 pub fn run_tui(
     mut state: AppState,
     rx: Receiver<ScannerEvent>,
-) -> io::Result<Option<(PathBuf, Vec<String>, Vec<usize>)>> {
+) -> io::Result<Option<(PathBuf, UiAction, Vec<String>, Vec<usize>)>> {
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
 
@@ -179,7 +179,7 @@ pub fn run_tui(
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
 
-    if state.should_execute {
+    if let Some(action) = state.action {
         let path = state.repositories[state.repo_index].path.clone();
         let branches = state
             .selected_branches
@@ -193,7 +193,7 @@ pub fn run_tui(
             .unwrap_or_default()
             .into_iter()
             .collect();
-        Ok(Some((path, branches, stashes)))
+        Ok(Some((path, action, branches, stashes)))
     } else {
         Ok(None)
     }

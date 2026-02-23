@@ -1,4 +1,4 @@
-use crate::ui::state::{AppState, Focus};
+use crate::ui::state::{AppState, Focus, UiAction};
 use crossterm::event::{self, Event, KeyCode};
 use std::time::Duration;
 
@@ -88,7 +88,13 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                     }
                     KeyCode::Enter => {
                         if state.focus == Focus::Details {
-                            state.should_execute = true;
+                            state.action = Some(UiAction::CleanRepo);
+                            state.should_quit = true;
+                        }
+                    }
+                    KeyCode::Char('p') => {
+                        if state.focus == Focus::Repositories {
+                            state.action = Some(UiAction::PruneRemotes);
                             state.should_quit = true;
                         }
                     }
