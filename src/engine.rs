@@ -147,6 +147,29 @@ async fn execute_action(path: &Path, action: &Action) -> Result<String, EngineEr
                 }
             }
 
+            for w in worktrees {
+                let out = Command::new("git")
+                    .args(["worktree", "remove", "--force", &w])
+                    .current_dir(path)
+                    .output()
+                    .await;
+                if let Ok(o) = out {
+                    if o.status.success() {
+                        msgs.push(format!("Removed worktree {}", w));
+                    } else {
+                        msgs.push(format!(
+                            "Failed to remove worktree {}: {}",
+                            w,
+                            String::from_utf8_lossy(&o.stderr)
+                        ));
+                    }
+                }
+            }
+
+            if msgs.is_empty() {
+                msgs.push("No cleaning performed.".to_string());
+            }
+
             Ok(msgs.join(", "))
         }
         Action::PruneRemotes => {
