@@ -37,8 +37,13 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         format!("Repositories ({})", state.repositories.len())
     };
 
+    let title_suffix = if state.is_searching {
+        format!(" (Searching: {})", state.search_query)
+    } else {
+        String::new()
+    };
     let repo_block = Block::default()
-        .title(repo_block_title)
+        .title(format!("{}{}", repo_block_title, title_suffix))
         .borders(Borders::ALL)
         .border_style(if state.focus == Focus::Repositories {
             Style::default().fg(theme.border_active)
@@ -59,7 +64,23 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             .repositories
             .iter()
             .enumerate()
-            .map(|(i, repo)| {
+            .filter_map(|(i, repo)| {
+                let repo_name = repo
+                    .path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+
+                if state.is_searching && !state.search_query.is_empty() {
+                    if !repo_name
+                        .to_lowercase()
+                        .contains(&state.search_query.to_lowercase())
+                    {
+                        return None;
+                    }
+                }
+
                 let prefix = if i == state.repo_index { ">> " } else { "   " };
                 let mut content_spans = vec![
                     ratatui::text::Span::raw(prefix),
@@ -84,7 +105,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 if i == state.repo_index && state.focus == Focus::Repositories {
                     style = style.fg(theme.primary);
                 }
-                ListItem::new(ratatui::text::Line::from(content_spans)).style(style)
+                Some(ListItem::new(ratatui::text::Line::from(content_spans)).style(style))
             })
             .collect();
 

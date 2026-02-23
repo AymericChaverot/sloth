@@ -1,11 +1,11 @@
 use crate::ui::state::{AppState, Focus, UiAction};
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use std::time::Duration;
 
 pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
     if event::poll(Duration::from_millis(16))? {
         if let Event::Key(key) = event::read()? {
-            if key.kind == event::KeyEventKind::Press {
+            if key.kind == KeyEventKind::Press {
                 if state.diff_modal_open {
                     match key.code {
                         KeyCode::Esc | KeyCode::Char('v') => {
@@ -16,6 +16,22 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         }
                         KeyCode::Down => {
                             state.diff_scroll = state.diff_scroll.saturating_add(1);
+                        }
+                        _ => {}
+                    }
+                    return Ok(());
+                }
+
+                if state.is_searching {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Enter => {
+                            state.is_searching = false;
+                        }
+                        KeyCode::Backspace => {
+                            state.search_query.pop();
+                        }
+                        KeyCode::Char(c) => {
+                            state.search_query.push(c);
                         }
                         _ => {}
                     }
@@ -105,8 +121,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                     KeyCode::Char('A') | KeyCode::Char('a') => {
                         if state.focus == Focus::Details && !state.repositories.is_empty() {
                             let repo = &state.repositories[state.repo_index];
-                            let mut set =
-                                state.selected_branches.entry(state.repo_index).or_default();
+                            let set = state.selected_branches.entry(state.repo_index).or_default();
                             for branch in &repo.branches {
                                 // Smart auto-select logic
                                 if branch.is_dead || branch.is_merged {
@@ -144,6 +159,9 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                             state.diff_lines = None;
                             state.diff_scroll = 0;
                         }
+                    }
+                    KeyCode::Char('/') => {
+                        state.is_searching = true;
                     }
                     KeyCode::Up => match state.focus {
                         Focus::Repositories => {

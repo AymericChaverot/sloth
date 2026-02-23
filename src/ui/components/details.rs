@@ -26,6 +26,16 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
             let selected_b = state.selected_branches.entry(state.repo_index).or_default();
             for (b_idx, branch) in repo.branches.iter().enumerate() {
+                if state.is_searching && !state.search_query.is_empty() {
+                    if !branch
+                        .name
+                        .to_lowercase()
+                        .contains(&state.search_query.to_lowercase())
+                    {
+                        continue;
+                    }
+                }
+
                 let is_active = if b_idx == state.detail_index {
                     ">> "
                 } else {
@@ -162,6 +172,16 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .push(ListItem::new("--- Stashes ---").style(Style::default().fg(theme.secondary)));
             let selected_s = state.selected_stashes.entry(state.repo_index).or_default();
             for (s_idx, stash) in repo.stashes.iter().enumerate() {
+                if state.is_searching && !state.search_query.is_empty() {
+                    if !stash
+                        .message
+                        .to_lowercase()
+                        .contains(&state.search_query.to_lowercase())
+                    {
+                        continue;
+                    }
+                }
+
                 let actual_idx = repo.branches.len() + s_idx;
                 let is_active = if actual_idx == state.detail_index {
                     ">> "
@@ -228,6 +248,13 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             ));
             title_spans.push(Span::raw("]"));
         }
+    }
+
+    if state.is_searching {
+        title_spans.push(Span::styled(
+            format!(" (Searching: {})", state.search_query),
+            Style::default().fg(theme.text_normal),
+        ));
     }
 
     let detail_block = Block::default()
