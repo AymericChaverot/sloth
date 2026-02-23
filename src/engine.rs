@@ -138,6 +138,24 @@ async fn execute_action(path: &Path, action: &Action) -> Result<String, EngineEr
             Ok(msgs.join(", "))
         }
         Action::PruneRemotes => {
+            let remote_check = Command::new("git")
+                .args(["remote"])
+                .current_dir(path)
+                .output()
+                .await;
+
+            let has_origin = if let Ok(o) = remote_check {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .any(|l| l.trim() == "origin")
+            } else {
+                false
+            };
+
+            if !has_origin {
+                return Ok("No 'origin' remote found. Skipped.".to_string());
+            }
+
             let out = Command::new("git")
                 .args(["remote", "prune", "origin"])
                 .current_dir(path)
