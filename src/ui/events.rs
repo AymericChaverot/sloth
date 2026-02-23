@@ -98,6 +98,12 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                             state.should_quit = true;
                         }
                     }
+                    KeyCode::Char('c') => {
+                        if state.focus == Focus::Repositories {
+                            state.action = Some(UiAction::GarbageCollect);
+                            state.should_quit = true;
+                        }
+                    }
                     KeyCode::Up => match state.focus {
                         Focus::Repositories => {
                             if state.repo_index > 0 {

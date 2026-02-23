@@ -23,6 +23,7 @@ pub enum Focus {
 pub enum UiAction {
     CleanRepo,
     PruneRemotes,
+    GarbageCollect,
 }
 
 pub struct AppState {

@@ -75,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
                 engine::Action::CleanRepo { branches, stashes }
             }
             ui::UiAction::PruneRemotes => engine::Action::PruneRemotes,
+            ui::UiAction::GarbageCollect => engine::Action::GarbageCollect,
         };
 
         println!(
@@ -82,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
             match engine_action {
                 engine::Action::CleanRepo { .. } => "CleanRepo",
                 engine::Action::PruneRemotes => "PruneRemotes",
+                engine::Action::GarbageCollect => "GarbageCollect",
             },
             path.display()
         );
