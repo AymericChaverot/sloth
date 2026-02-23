@@ -3,6 +3,7 @@ use clap::Parser;
 mod engine;
 mod git;
 mod scanner;
+mod sys;
 mod ui;
 mod updater;
 
@@ -43,7 +44,8 @@ async fn main() -> anyhow::Result<()> {
         let mut tasks = Vec::new();
         for path in git_repos {
             tasks.push(tokio::task::spawn_blocking(move || {
-                git::analyze_repository(&path)
+                let sys = crate::sys::RealSystem;
+                git::analyze_repository(&path, &sys)
             }));
         }
 
@@ -66,8 +68,9 @@ async fn main() -> anyhow::Result<()> {
 
         // Spawn background size calculator (sequential to avoid I/O thrashing)
         tokio::task::spawn_blocking(move || {
+            let sys = crate::sys::RealSystem;
             for (path, wt_paths) in size_tasks_args {
-                let sizes = git::compute_repo_sizes(&path, wt_paths);
+                let sizes = git::compute_repo_sizes(&path, wt_paths, &sys, &sys);
                 let _ = tx.send(ui::ScannerEvent::SizeComputed {
                     path,
                     size_bytes: sizes.0,
@@ -87,16 +90,16 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState::new();
 
-    // Start TUI
     if let Some((paths, action, branches, stashes, worktrees)) = ui::run_tui(state, rx)? {
+        let sys = crate::sys::RealSystem;
         let mut size_before = 0;
         for path in &paths {
-            if let Ok(s) = crate::git::stats::get_repo_size(path) {
+            if let Ok(s) = crate::git::stats::get_repo_size(path, &sys) {
                 size_before += s;
             }
         }
         for wt in &worktrees {
-            if let Ok(s) = crate::git::stats::get_repo_size(std::path::Path::new(wt)) {
+            if let Ok(s) = crate::git::stats::get_repo_size(std::path::Path::new(wt), &sys) {
                 size_before += s;
             }
         }
@@ -146,6 +149,7 @@ async fn main() -> anyhow::Result<()> {
             paths.clone(),
             engine_action,
             false, // REAL EXECUTION!
+            sys.clone(),
         )
         .await;
 
@@ -156,12 +160,12 @@ async fn main() -> anyhow::Result<()> {
 
         let mut size_after = 0;
         for path in &paths {
-            if let Ok(s) = crate::git::stats::get_repo_size(path) {
+            if let Ok(s) = crate::git::stats::get_repo_size(path, &sys) {
                 size_after += s;
             }
         }
         for wt in &worktrees {
-            if let Ok(s) = crate::git::stats::get_repo_size(std::path::Path::new(wt)) {
+            if let Ok(s) = crate::git::stats::get_repo_size(std::path::Path::new(wt), &sys) {
                 size_after += s;
             }
         }

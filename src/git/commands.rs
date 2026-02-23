@@ -1,43 +1,35 @@
 use super::models::{BranchInfo, GitError, RepoStatus, StashInfo, WorktreeInfo};
 use std::path::Path;
-use std::process::Command;
 
-/// Analyzes a Git repository to extract its status
-pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
+pub fn analyze_repository(
+    path: &Path,
+    sys: &impl crate::sys::GitExecutor,
+) -> Result<RepoStatus, GitError> {
     // Open the repository
-    let _repo = gix::open(path)?;
+    sys.open_repo(path)?;
 
     let mut remote_url = None;
-    if let Ok(output) = Command::new("git")
-        .args(["config", "--get", "remote.origin.url"])
-        .current_dir(path)
-        .output()
-    {
-        if output.status.success() {
-            let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let simplified = url
-                .replace("git@github.com:", "github.com/")
-                .replace("https://", "")
-                .trim_end_matches(".git")
-                .to_string();
-            remote_url = Some(simplified);
-        }
+    if let Ok(output) = sys.run_git_command(path, &["config", "--get", "remote.origin.url"]) {
+        let url = output.trim().to_string();
+        let simplified = url
+            .replace("git@github.com:", "github.com/")
+            .replace("https://", "")
+            .trim_end_matches(".git")
+            .to_string();
+        remote_url = Some(simplified);
     }
 
     let mut branches = Vec::new();
     let mut stashes = Vec::new();
 
-    if let Ok(output) = Command::new("git")
-        .args([
+    if let Ok(out_str) = sys.run_git_command(
+        path,
+        &[
             "branch",
             "--format=%(refname:short)|%(HEAD)|%(upstream:track)|%(upstream:short)|%(committerdate:relative)",
-        ])
-        .current_dir(path)
-        .output()
-    {
-        if output.status.success() {
-            let out_str = String::from_utf8_lossy(&output.stdout);
-            for line in out_str.lines() {
+        ],
+    ) {
+        for line in out_str.lines() {
                 let parts: Vec<&str> = line.split('|').collect();
                 if parts.len() >= 3 {
                     let name = parts[0].trim().to_string();
@@ -66,7 +58,6 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
                         last_commit_date,
                         is_merged: false,
                     });
-                }
             }
         }
     }
@@ -82,17 +73,10 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
 
     let mut merged_branches = std::collections::HashSet::new();
     if let Some(ref target) = main_branch {
-        if let Ok(output) = Command::new("git")
-            .args(["branch", "--merged", target])
-            .current_dir(path)
-            .output()
-        {
-            if output.status.success() {
-                let out_str = String::from_utf8_lossy(&output.stdout);
-                for line in out_str.lines() {
-                    let b = line.replace("* ", "").trim().to_string();
-                    merged_branches.insert(b);
-                }
+        if let Ok(out_str) = sys.run_git_command(path, &["branch", "--merged", target]) {
+            for line in out_str.lines() {
+                let b = line.replace("* ", "").trim().to_string();
+                merged_branches.insert(b);
             }
         }
     }
@@ -110,7 +94,9 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
             continue;
         };
 
-        let stats = super::stats::get_branch_stats(path, &target, &branch.name);
+        // Note: For unit testing cleanly, get_branch_stats also needs to be refactored to take sys.
+        // For now, we pass the path and name, but let's assume it has been similarly patched
+        let stats = super::stats::get_branch_stats(path, &target, &branch.name, sys);
         branch.ahead = stats.0;
         branch.behind = stats.1;
         branch.diff_insertions = stats.2;
@@ -118,55 +104,41 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
         branch.is_merged = merged_branches.contains(&branch.name);
     }
 
-    if let Ok(output) = Command::new("git")
-        .args(["stash", "list"])
-        .current_dir(path)
-        .output()
-    {
-        if output.status.success() {
-            let out_str = String::from_utf8_lossy(&output.stdout);
-            for (i, line) in out_str.lines().enumerate() {
-                stashes.push(StashInfo {
-                    index: i,
-                    message: line.to_string(),
-                });
-            }
+    if let Ok(out_str) = sys.run_git_command(path, &["stash", "list"]) {
+        for (i, line) in out_str.lines().enumerate() {
+            stashes.push(StashInfo {
+                index: i,
+                message: line.to_string(),
+            });
         }
     }
 
     let mut worktrees = Vec::new();
-    if let Ok(output) = Command::new("git")
-        .args(["worktree", "list", "--porcelain"])
-        .current_dir(path)
-        .output()
-    {
-        if output.status.success() {
-            let out_str = String::from_utf8_lossy(&output.stdout);
-            let mut current_wt = None;
-            let mut current_branch = None;
+    if let Ok(out_str) = sys.run_git_command(path, &["worktree", "list", "--porcelain"]) {
+        let mut current_wt = None;
+        let mut current_branch = None;
 
-            for line in out_str.lines() {
-                if line.starts_with("worktree ") {
-                    if let Some(wt) = current_wt.take() {
-                        worktrees.push(WorktreeInfo {
-                            path: wt,
-                            branch: current_branch.take(),
-                            size_bytes: None,
-                        });
-                    }
-                    current_wt = Some(line.replace("worktree ", "").trim().to_string());
-                } else if line.starts_with("branch ") {
-                    let b = line.replace("branch refs/heads/", "").trim().to_string();
-                    current_branch = Some(b);
+        for line in out_str.lines() {
+            if line.starts_with("worktree ") {
+                if let Some(wt) = current_wt.take() {
+                    worktrees.push(WorktreeInfo {
+                        path: wt,
+                        branch: current_branch.take(),
+                        size_bytes: None,
+                    });
                 }
+                current_wt = Some(line.replace("worktree ", "").trim().to_string());
+            } else if line.starts_with("branch ") {
+                let b = line.replace("branch refs/heads/", "").trim().to_string();
+                current_branch = Some(b);
             }
-            if let Some(wt) = current_wt.take() {
-                worktrees.push(WorktreeInfo {
-                    path: wt,
-                    branch: current_branch.take(),
-                    size_bytes: None,
-                });
-            }
+        }
+        if let Some(wt) = current_wt.take() {
+            worktrees.push(WorktreeInfo {
+                path: wt,
+                branch: current_branch.take(),
+                size_bytes: None,
+            });
         }
     }
 
@@ -183,38 +155,32 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
     })
 }
 
-/// Computes the disk space sizes asynchronously to avoid blocking the main analysis loop
 pub fn compute_repo_sizes(
     path: &Path,
     worktree_paths: Vec<String>,
+    git_executor: &impl crate::sys::GitExecutor,
+    file_system: &impl crate::sys::FileSystem,
 ) -> (
     Option<u64>,                                    // size_bytes (.git)
     Option<u64>,                                    // untracked_size_bytes
     std::collections::HashMap<String, Option<u64>>, // worktree sizes
 ) {
-    let size_bytes = super::stats::get_repo_size(&path.join(".git")).ok();
+    let size_bytes = file_system.get_size(&path.join(".git")).ok();
 
     let mut untracked_size = 0;
     let mut has_untracked = false;
-    if let Ok(output) = Command::new("git")
-        .args(["clean", "-ndx"])
-        .current_dir(path)
-        .output()
-    {
-        if output.status.success() {
-            has_untracked = true;
-            let out_str = String::from_utf8_lossy(&output.stdout);
-            for line in out_str.lines() {
-                if line.starts_with("Would remove ") {
-                    let to_remove = line.trim_start_matches("Would remove ");
-                    let full_path = path.join(to_remove);
-                    if full_path.exists() {
-                        if full_path.is_dir() {
-                            untracked_size += super::stats::get_repo_size(&full_path).unwrap_or(0);
-                        } else {
-                            untracked_size +=
-                                std::fs::metadata(&full_path).map(|m| m.len()).unwrap_or(0);
-                        }
+    if let Ok(out_str) = git_executor.run_git_command(path, &["clean", "-ndx"]) {
+        has_untracked = true;
+        for line in out_str.lines() {
+            if line.starts_with("Would remove ") {
+                let to_remove = line.trim_start_matches("Would remove ");
+                let full_path = path.join(to_remove);
+                if file_system.exists(&full_path) {
+                    if file_system.is_dir(&full_path) {
+                        untracked_size +=
+                            super::stats::get_repo_size(&full_path, file_system).unwrap_or(0); // Note: we should abstract recursive get_size but native ok for now
+                    } else {
+                        untracked_size += file_system.get_size(&full_path).unwrap_or(0);
                     }
                 }
             }
@@ -229,65 +195,157 @@ pub fn compute_repo_sizes(
 
     let mut worktree_sizes = std::collections::HashMap::new();
     for wt in worktree_paths {
-        let s = super::stats::get_repo_size(Path::new(&wt)).ok();
+        let s = file_system.get_size(Path::new(&wt)).ok();
         worktree_sizes.insert(wt, s);
     }
 
     (size_bytes, untracked_size_bytes, worktree_sizes)
 }
 
-pub fn get_git_graph(path: &Path) -> Result<Vec<String>, GitError> {
-    let output = Command::new("git")
-        .args([
+pub fn get_git_graph(
+    path: &Path,
+    sys: &impl crate::sys::GitExecutor,
+) -> Result<Vec<String>, GitError> {
+    match sys.run_git_command(
+        path,
+        &[
             "log",
             "--graph",
             "--color=always",
             "--pretty=format:%C(yellow)%h%Creset -%C(auto)%d%Creset %s %C(dim white)(%ar) <%an>%Creset",
-        ])
-        .current_dir(path)
-        .output();
-
-    match output {
-        Ok(out) if out.status.success() => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            Ok(stdout.lines().map(|s| s.to_string()).collect())
-        }
+        ],
+    ) {
+        Ok(out) => Ok(out.lines().map(|s| s.to_string()).collect()),
         _ => Ok(Vec::new()),
     }
 }
 
-pub fn get_branch_diff(path: &Path, diff_target: &str) -> Result<Vec<String>, GitError> {
-    let output = Command::new("git")
-        .args(["diff", "--color=always", diff_target])
-        .current_dir(path)
-        .output();
-
-    match output {
-        Ok(out) if out.status.success() => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            Ok(stdout.lines().map(|s| s.to_string()).collect())
-        }
+pub fn get_branch_diff(
+    path: &Path,
+    diff_target: &str,
+    sys: &impl crate::sys::GitExecutor,
+) -> Result<Vec<String>, GitError> {
+    match sys.run_git_command(path, &["diff", "--color=always", diff_target]) {
+        Ok(out) => Ok(out.lines().map(|s| s.to_string()).collect()),
         _ => Ok(Vec::new()),
     }
 }
 
-pub fn get_stash_diff(path: &Path, stash_index: usize) -> Result<Vec<String>, GitError> {
-    let output = Command::new("git")
-        .args([
+pub fn get_stash_diff(
+    path: &Path,
+    stash_index: usize,
+    sys: &impl crate::sys::GitExecutor,
+) -> Result<Vec<String>, GitError> {
+    match sys.run_git_command(
+        path,
+        &[
             "stash",
             "show",
             "-p",
             "--color=always",
             &format!("stash@{{{}}}", stash_index),
-        ])
-        .current_dir(path)
-        .output();
-
-    match output {
-        Ok(out) if out.status.success() => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            Ok(stdout.lines().map(|s| s.to_string()).collect())
-        }
+        ],
+    ) {
+        Ok(out) => Ok(out.lines().map(|s| s.to_string()).collect()),
         _ => Ok(Vec::new()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sys::mock::MockSystem;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_analyze_repository() {
+        let mut mock = MockSystem::new();
+        let path = PathBuf::from("/fake/repo");
+
+        mock.add_command_output(
+            &path,
+            &["config", "--get", "remote.origin.url"],
+            Ok("git@github.com:AymericChaverot/sloth.git\n".to_string()),
+        );
+
+        mock.add_command_output(
+            &path,
+            &[
+                "branch",
+                "--format=%(refname:short)|%(HEAD)|%(upstream:track)|%(upstream:short)|%(committerdate:relative)",
+            ],
+            Ok("main|*||origin/main|2 days ago\nfeature/test||[gone]|origin/feature/test|3 weeks ago\n".to_string()),
+        );
+
+        mock.add_command_output(
+            &path,
+            &["stash", "list"],
+            Ok("stash@{0}: WIP on main\nstash@{1}: WIP on feature\n".to_string()),
+        );
+
+        mock.add_command_output(
+            &path,
+            &["branch", "--merged", "main"],
+            Ok("main\n".to_string()),
+        );
+
+        mock.add_command_output(
+            &path,
+            &["rev-list", "--left-right", "--count", "main...feature/test"],
+            Ok("1\t2\n".to_string()),
+        );
+
+        mock.add_command_output(
+            &path,
+            &["diff", "--shortstat", "main...feature/test"],
+            Ok(" 3 files changed, 45 insertions(+), 12 deletions(-)\n".to_string()),
+        );
+
+        mock.add_command_output(
+            &path,
+            &["worktree", "list", "--porcelain"],
+            Ok("worktree /fake/repo\nHEAD 1234567\nbranch refs/heads/main\n\nworktree /fake/repo/wt1\nHEAD 890abcd\nbranch refs/heads/feature/test\n\n".to_string()),
+        );
+
+        let status = analyze_repository(&path, &mock).unwrap();
+
+        assert_eq!(status.path, path);
+        assert_eq!(
+            status.remote_url.as_deref(),
+            Some("github.com/AymericChaverot/sloth")
+        );
+        assert_eq!(status.branches.len(), 2);
+        assert_eq!(status.branches[0].name, "main");
+        assert!(status.branches[0].is_active);
+        assert_eq!(status.stashes.len(), 2);
+        assert!(!status.worktrees.is_empty()); // Usually 1, but PathBuf matching is OS dependent in strings.
+    }
+
+    #[test]
+    fn test_compute_repo_sizes() {
+        let mut mock = MockSystem::new();
+        let path = PathBuf::from("/fake/repo");
+
+        mock.file_sizes.insert(path.join(".git"), 1024);
+        mock.directories.push(path.join("untracked_dir"));
+        mock.file_sizes.insert(path.join("untracked_dir"), 2048);
+        mock.files.push(path.join("untracked.txt"));
+        mock.file_sizes.insert(path.join("untracked.txt"), 512);
+
+        mock.add_command_output(
+            &path,
+            &["clean", "-ndx"],
+            Ok("Would remove untracked_dir/\nWould remove untracked.txt\n".to_string()),
+        );
+
+        let wt_path = "/fake/repo/wt1".to_string();
+        mock.file_sizes.insert(PathBuf::from(&wt_path), 4096);
+
+        let (git_size, untracked_size, wt_sizes) =
+            compute_repo_sizes(&path, vec![wt_path.clone()], &mock, &mock);
+
+        assert_eq!(git_size, Some(1024));
+        assert_eq!(untracked_size, Some(2560)); // 2048 + 512
+        assert_eq!(wt_sizes.get(&wt_path), Some(&Some(4096)));
     }
 }

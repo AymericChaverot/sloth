@@ -95,7 +95,7 @@ pub fn run_tui(
         }
 
         if needs_fetch {
-            if let Ok(lines) = crate::git::get_git_graph(&fetch_path) {
+            if let Ok(lines) = crate::git::get_git_graph(&fetch_path, &crate::sys::RealSystem) {
                 if let Some(repo) = state.repositories.get_mut(state.repo_index) {
                     repo.graph_lines = Some(lines);
                 }
@@ -120,17 +120,21 @@ pub fn run_tui(
                         "master".to_string()
                     };
                     let diff_target = format!("{}...{}", target, b.name);
-                    if let Ok(diff) =
-                        crate::git::commands::get_branch_diff(&repo.path, &diff_target)
-                    {
+                    if let Ok(diff) = crate::git::commands::get_branch_diff(
+                        &repo.path,
+                        &diff_target,
+                        &crate::sys::RealSystem,
+                    ) {
                         state.diff_lines = Some(diff);
                     }
                 } else {
                     let s_idx = state.detail_index.saturating_sub(b_len);
                     if let Some(stash) = repo.stashes.get(s_idx) {
-                        if let Ok(diff) =
-                            crate::git::commands::get_stash_diff(&repo.path, stash.index)
-                        {
+                        if let Ok(diff) = crate::git::commands::get_stash_diff(
+                            &repo.path,
+                            stash.index,
+                            &crate::sys::RealSystem,
+                        ) {
                             state.diff_lines = Some(diff);
                         }
                     }
