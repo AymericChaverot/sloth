@@ -69,6 +69,13 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                         format!(" [{}]", size_str),
                         Style::default().fg(Color::DarkGray),
                     ));
+                } else if !repo.analyzed {
+                    let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+                    let frame = spinner[(state.loader_tick / 4) % spinner.len()];
+                    content_spans.push(ratatui::text::Span::styled(
+                        format!(" [{}]", frame),
+                        Style::default().fg(Color::DarkGray),
+                    ));
                 }
 
                 let mut style = Style::default();

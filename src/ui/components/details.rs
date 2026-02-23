@@ -77,7 +77,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 if branch.is_merged {
                     spans.push(Span::styled(
                         " (Merged)",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(Color::LightMagenta),
                     ));
                 }
 
