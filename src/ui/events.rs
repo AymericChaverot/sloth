@@ -166,6 +166,12 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                             state.diff_scroll = 0;
                         }
                     }
+                    KeyCode::Char('X') => {
+                        if state.focus == Focus::Repositories && !state.repositories.is_empty() {
+                            state.action = Some(UiAction::DeepClean);
+                            state.should_quit = true;
+                        }
+                    }
                     KeyCode::Char('/') => {
                         state.is_searching = true;
                     }

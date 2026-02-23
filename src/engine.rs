@@ -17,6 +17,7 @@ pub enum Action {
     },
     PruneRemotes,
     GarbageCollect,
+    DeepClean,
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +86,7 @@ fn format_action(action: &Action) -> String {
         }
         Action::PruneRemotes => "Prune dead remote tracking branches".to_string(),
         Action::GarbageCollect => "Garbage collect local repository".to_string(),
+        Action::DeepClean => "Deep clean untracked/ignored directories".to_string(),
     }
 }
 
@@ -196,6 +198,27 @@ async fn execute_action(path: &Path, action: &Action) -> Result<String, EngineEr
                 } else {
                     Ok(format!(
                         "Failed to garbage collect: {}",
+                        String::from_utf8_lossy(&o.stderr)
+                    ))
+                }
+            } else {
+                Err(EngineError::ExecutionError(
+                    "Command failed to start".to_string(),
+                ))
+            }
+        }
+        Action::DeepClean => {
+            let out = Command::new("git")
+                .args(["clean", "-xdff", "--exclude=.git"])
+                .current_dir(path)
+                .output()
+                .await;
+            if let Ok(o) = out {
+                if o.status.success() {
+                    Ok("Deep clean successful. Untracked and ignored files purged.".to_string())
+                } else {
+                    Ok(format!(
+                        "Failed to deep clean: {}",
                         String::from_utf8_lossy(&o.stderr)
                     ))
                 }

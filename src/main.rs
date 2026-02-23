@@ -76,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
             }
             ui::UiAction::PruneRemotes => engine::Action::PruneRemotes,
             ui::UiAction::GarbageCollect => engine::Action::GarbageCollect,
+            ui::UiAction::DeepClean => engine::Action::DeepClean,
         };
 
         if paths.len() == 1 {
@@ -85,6 +86,7 @@ async fn main() -> anyhow::Result<()> {
                     engine::Action::CleanRepo { .. } => "CleanRepo",
                     engine::Action::PruneRemotes => "PruneRemotes",
                     engine::Action::GarbageCollect => "GarbageCollect",
+                    engine::Action::DeepClean => "DeepClean",
                 },
                 paths[0].display()
             );
@@ -95,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
                     engine::Action::CleanRepo { .. } => "CleanRepo",
                     engine::Action::PruneRemotes => "PruneRemotes",
                     engine::Action::GarbageCollect => "GarbageCollect",
+                    engine::Action::DeepClean => "DeepClean",
                 },
                 paths.len()
             );

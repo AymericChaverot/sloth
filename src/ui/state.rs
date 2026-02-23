@@ -24,6 +24,7 @@ pub enum UiAction {
     CleanRepo,
     PruneRemotes,
     GarbageCollect,
+    DeepClean,
 }
 
 pub struct AppState {
