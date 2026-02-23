@@ -17,6 +17,7 @@ pub enum Focus {
     Repositories,
     Details,
     GitGraph,
+    Dashboard,
 }
 
 #[derive(Debug, Clone)]

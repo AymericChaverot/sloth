@@ -172,6 +172,9 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                             state.should_quit = true;
                         }
                     }
+                    KeyCode::Char('d') => {
+                        state.focus = Focus::Dashboard;
+                    }
                     KeyCode::Char('/') => {
                         state.is_searching = true;
                     }
@@ -192,6 +195,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         Focus::GitGraph => {
                             state.graph_scroll_y = state.graph_scroll_y.saturating_sub(1);
                         }
+                        Focus::Dashboard => {}
                     },
                     KeyCode::Down => match state.focus {
                         Focus::Repositories => {
@@ -223,6 +227,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                                 }
                             }
                         }
+                        Focus::Dashboard => {}
                     },
                     _ => {}
                 }

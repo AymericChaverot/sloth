@@ -19,6 +19,9 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         Focus::GitGraph => {
             "Right Pane: Arrows to scroll. 'f' fullscreen. 't' theme. 'Esc' or 'g' back. 'q' quit.".to_string()
         }
+        Focus::Dashboard => {
+            "Dashboard. 'q' quit. Left/Right or 'd' to exit.".to_string()
+        }
     };
     if let Some(ref ver) = state.update_available {
         help_text = format!(
