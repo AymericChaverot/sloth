@@ -87,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
                 engine::Action::CleanRepo {
                     branches,
                     stashes,
-                    worktrees,
+                    worktrees: worktrees.clone(),
                 }
             }
             ui::UiAction::PruneRemotes => engine::Action::PruneRemotes,
@@ -120,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         let results = engine::execute_batch(
-            paths,
+            paths.clone(),
             engine_action,
             false, // REAL EXECUTION!
         )
@@ -129,6 +129,26 @@ async fn main() -> anyhow::Result<()> {
         for res in results {
             let symbol = if res.success { "✅" } else { "❌" };
             println!("{} {}: {}", symbol, res.repo_path.display(), res.message);
+        }
+
+        let mut size_after = 0;
+        for path in &paths {
+            if let Ok(s) = crate::git::stats::get_repo_size(path) {
+                size_after += s;
+            }
+        }
+        for wt in &worktrees {
+            if let Ok(s) = crate::git::stats::get_repo_size(std::path::Path::new(wt)) {
+                size_after += s;
+            }
+        }
+
+        let recovered = size_before.saturating_sub(size_after);
+        if recovered > 0 {
+            println!(
+                "\nDisk space recovered: {}",
+                crate::git::stats::format_size(recovered)
+            );
         }
     } else {
         println!("No action executed.");
