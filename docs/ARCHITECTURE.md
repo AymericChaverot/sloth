@@ -2,7 +2,7 @@
 
 ## Overview
 
-Sloth is a terminal-based Git repository manager built in Rust. It scans a directory tree for Git repositories, analyzes their branch and stash state, and presents an interactive TUI for exploration and cleanup.
+Sloth is a terminal-based Git repository manager built in Rust. It scans a directory tree for Git repositories, analyzes their branch, stash and worktree state, computes disk usage, and presents an interactive multi-pane TUI for exploration and cleanup.
 
 ## High-Level Data Flow
 
@@ -12,14 +12,19 @@ graph LR
     B -->|mpsc channel| C[TUI Event Loop]
     B --> D[Git Analyzer]
     D -->|mpsc channel| C
+    D --> G[Size Calculator]
+    G -->|mpsc channel| C
     C --> E[Render Components]
-    C -->|on Enter| F[Execution Engine]
+    C -->|on Action| F[Execution Engine]
+    H[Update Checker] -->|mpsc channel| C
 ```
 
 1. **Scanner** walks the filesystem asynchronously, emitting `RepoFound` events.
-2. **Git Analyzer** runs `git` commands on each discovered repo, emitting `RepoAnalyzed` events.
-3. **TUI Event Loop** consumes events, updates `AppState`, and re-renders every 16ms.
-4. **Execution Engine** performs destructive operations (branch delete, stash drop) when the user confirms.
+2. **Git Analyzer** runs `git` commands on each discovered repo via `GitExecutor`, emitting `RepoAnalyzed` events.
+3. **Size Calculator** runs sequentially in the background, emitting `SizeComputed` events for progressive disk usage display.
+4. **Update Checker** queries GitHub releases API in the background, emitting `UpdateAvailable` if a newer version exists.
+5. **TUI Event Loop** consumes events, updates `AppState`, and re-renders every 16ms.
+6. **Execution Engine** performs destructive operations when the user confirms (branch delete, stash drop, worktree remove, prune, gc, deep clean).
 
 ## Module Breakdown
 
@@ -27,8 +32,22 @@ graph LR
 
 - Parses CLI arguments via `clap`
 - Creates an `mpsc::channel` for background → UI communication
-- Spawns a Tokio task that runs the scanner and analyzer pipeline
+- Spawns Tokio tasks for scanning, analysis, background sizes, and update checking
 - Hands the receiver to `ui::run_tui`
+- After TUI exits, executes the selected action via `engine::execute_batch` and reports disk space recovered
+
+### `sys.rs` — System Abstraction Layer
+
+Defines two traits for dependency injection:
+
+| Trait | Methods | Purpose |
+|---|---|---|
+| `GitExecutor` | `run_git_command()`, `run_git_command_async()`, `open_repo()` | Abstract all Git CLI interactions |
+| `FileSystem` | `exists()`, `is_dir()`, `get_size()` | Abstract all filesystem queries |
+
+**Implementations:**
+- `RealSystem` — wraps `std::process::Command`, `tokio::process::Command`, `std::fs`, and `gix::open`
+- `MockSystem` (`#[cfg(test)]`) — in-memory HashMap-based fake for deterministic hermetic tests
 
 ### `scanner.rs` — Filesystem Discovery
 
@@ -40,34 +59,43 @@ graph LR
 
 | File | Responsibility |
 |---|---|
-| `models.rs` | `RepoStatus`, `BranchInfo`, `StashInfo`, `GitError` — pure data |
-| `commands.rs` | Shells out to `git` for branch listing, stash listing, graph log, diff stats |
-| `mod.rs` | Re-exports public API (`analyze_repository`, `get_git_graph`, `RepoStatus`) |
+| `models.rs` | `RepoStatus`, `BranchInfo`, `StashInfo`, `WorktreeInfo`, `GitError` — pure data |
+| `commands.rs` | `analyze_repository`, `compute_repo_sizes`, `get_git_graph`, `get_branch_diff`, `get_stash_diff` — all accept `&impl GitExecutor` / `&impl FileSystem` |
+| `stats.rs` | `get_branch_stats` (ahead/behind/diff via `GitExecutor`), `get_repo_size` (via `FileSystem`), `parse_shortstat`, `format_size` |
+| `mod.rs` | Re-exports public API |
 
 **Key design decisions:**
 - Uses `gix` only to validate/open repos; actual data comes from `git` CLI for reliability
 - `parse_shortstat` is a pure function with full test coverage
-- Graph data is fetched lazily (on-demand) to avoid upfront cost
+- Graph and diff data are fetched lazily (on-demand) to avoid upfront cost
+- Size calculations run in a separate sequential background task to avoid I/O thrashing
 
 ### `ui.rs` — TUI Runner
 
 - Sets up the terminal with `crossterm` (raw mode, alternate screen)
 - Runs the main 60fps render loop
+- Lazily fetches graph lines and diff content on pane focus
 - Delegates rendering to `components::*` and input to `events::handle_events`
-- Returns the user's selection (path, branches, stashes) on exit
+- Returns the user's selection (paths, action, branches, stashes, worktrees) on exit
 
 ### `ui/state.rs` — Application State
 
-- `AppState` — single struct holding all mutable TUI state
+- `AppState` — single struct holding all mutable TUI state (repo list, selections, focus, scroll offsets, loading flags)
 - `Focus` enum — tracks which pane has keyboard focus
-- `ScannerEvent` enum — messages from background tasks to the UI
-- Has unit tests validating initialization defaults
+- `ScannerEvent` enum — messages from background tasks: `RepoFound`, `RepoAnalyzed`, `ScanComplete`, `AnalysisComplete`, `SizeComputed`, `UpdateAvailable`
+- `UiAction` enum — `CleanRepo`, `PruneRemotes`, `GarbageCollect`, `DeepClean`
 
 ### `ui/events.rs` — Input Handler
 
 - `handle_events(state)` — polls `crossterm` and mutates `AppState`
 - Pure state machine: no rendering, no I/O beyond keyboard polling
-- Handles navigation, selection toggling, graph controls, quit
+- Handles navigation, selection toggling, action menu, graph controls, diff modal, theme cycling, dashboard toggle, and quit
+
+### `ui/theme.rs` — Theme Engine
+
+- Defines multiple color palettes (e.g., dark, light, ocean) as named themes
+- Persists user preference to a config file
+- Exposes theme colors to all rendering components
 
 ### `ui/components/` — Render Functions
 
@@ -75,15 +103,34 @@ Each component is a pure `render(frame, state, area)` function:
 
 | Component | Pane | Content |
 |---|---|---|
-| `repositories.rs` | Left | Repo list with scanning loader |
-| `details.rs` | Middle | Branch/stash list with selection checkboxes, ahead/behind stats |
-| `graph.rs` | Right | ANSI-colored commit graph with Unicode box-drawing characters |
+| `header.rs` | Top | App title, repository count, current theme, update banner |
+| `repositories.rs` | Left | Repo list with disk size indicators and selection state |
+| `details.rs` | Center | Branch/stash/worktree list with selection checkboxes, ahead/behind stats, diff stats, merge status |
+| `graph.rs` | Right | ANSI-colored commit graph with Unicode box-drawing, fullscreen toggle |
+| `dashboard.rs` | Overlay | Aggregated stats overview across all scanned repositories |
+| `diff_modal.rs` | Overlay | Floating modal showing syntax-colored branch or stash diffs |
+| `help.rs` | Bottom | Context-sensitive keyboard shortcut bar |
 
 ### `engine.rs` — Execution Engine
 
-- `execute_batch` — runs actions across repos concurrently via `tokio::spawn`
+- `execute_batch<T: GitExecutor>` — runs actions across repos concurrently via `tokio::spawn`
+- Uses `run_git_command_async` for non-blocking Git operations
 - Supports dry-run mode for safe previews
 - Stashes are dropped in reverse index order to prevent index shift bugs
+
+**Supported actions:**
+| Action | Git command |
+|---|---|
+| `CleanRepo` | `branch -D`, `stash drop`, `worktree remove --force` |
+| `PruneRemotes` | `remote prune origin` (with safety check for origin existence) |
+| `GarbageCollect` | `gc` |
+| `DeepClean` | `clean -xdff --exclude=.git` |
+
+### `updater.rs` — Self-Update
+
+- Queries `https://api.github.com/repos/.../releases/latest` for the newest version
+- Compares with compiled-in `CARGO_PKG_VERSION`
+- Emits `ScannerEvent::UpdateAvailable` if a newer release exists
 
 ## Concurrency Model
 
@@ -100,26 +147,38 @@ Main Thread          Tokio Runtime
     │                     │      ├─ RepoAnalyzed ──► mpsc ──► TUI
     │                     │      └─ AnalysisComplete ──► mpsc ──► TUI
     │                     │
+    │                     │─── Size Calculator (spawn_blocking, sequential)
+    │                     │      └─ SizeComputed ──► mpsc ──► TUI
+    │                     │
+    │                     │─── Update Checker (spawn_blocking)
+    │                     │      └─ UpdateAvailable ──► mpsc ──► TUI
+    │                     │
     │◄── run_tui ─────────│
     │  (blocking on main) │
+    │                     │
+    │── execute_batch ──► │─── Engine Tasks (spawn × N, async GitExecutor)
 ```
 
 - The TUI runs on the main thread (required by terminal I/O)
 - Background work happens on Tokio's thread pool
 - Communication is via `std::sync::mpsc` (not `tokio::sync`) since the consumer is synchronous
+- Size calculations run sequentially to avoid I/O thrashing on large worktrees
 
 ## Error Handling
 
 | Layer | Strategy |
 |---|---|
 | Scanner | Silently skips non-repo directories |
-| Git commands | Returns `Result<T, GitError>`, errors are logged per-repo |
+| Git commands | Returns `Result<T, GitError>` or `io::Result`, errors are logged per-repo |
 | Engine | Returns `ExecutionResult` with `success` flag and message |
 | TUI | Uses `io::Result`, cleans up terminal on any error |
+| Updater | Best-effort, failures are silently ignored |
 
 ## Testing Strategy
 
-- **Unit tests** in `git/commands.rs` for parsing functions
-- **State tests** in `ui/state.rs` for initialization invariants
-- **Snapshot tests** via `insta` for `RepoStatus` structures
+- **Hermetic unit tests** via `MockSystem` — no real Git repos or disk access needed
+- **`git::commands`** — `analyze_repository` and `compute_repo_sizes` against mocked Git outputs
+- **`git::stats`** — `parse_shortstat` edge cases (empty, partial, malformed, insertions-only, deletions-only)
+- **`engine`** — `execute_batch` for CleanRepo and PruneRemotes with mocked async commands
+- **`ui::state`** — `AppState` initialization invariants
 - **CI pipeline** runs fmt + clippy + test + build on every push

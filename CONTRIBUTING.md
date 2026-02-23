@@ -13,7 +13,7 @@ Thank you for your interest in contributing to Sloth! This guide will help you g
 ### Setup
 
 ```bash
-git clone https://github.com/your-username/sloth.git
+git clone https://github.com/AymericChaverot/sloth.git
 cd sloth
 cargo build
 cargo test
@@ -41,15 +41,27 @@ cargo test
 # Run the full suite
 cargo test
 
-# Update snapshots if needed
-cargo insta review
+# Run with output
+cargo test -- --nocapture
+
+# Run a specific test
+cargo test test_analyze_repository
 ```
 
 - **Unit tests** go in the same file as the code under `#[cfg(test)] mod tests`.
-- **Snapshot tests** use `insta` for golden-file validation.
-- Every new parsing function or state transition should have test coverage.
+- Use `MockSystem` from `sys::mock` for hermetic testing — no disk or Git access needed.
+- Every new parsing function, command wrapper, or engine action should have test coverage.
 
-### 4. Commit Messages
+### 4. System Abstraction
+
+All Git and filesystem operations must go through the trait interfaces defined in `sys.rs`:
+
+- **`GitExecutor`** for any `git` CLI call (use `run_git_command` for sync, `run_git_command_async` for async)
+- **`FileSystem`** for any `std::fs` operation (`exists`, `is_dir`, `get_size`)
+
+Never call `std::process::Command::new("git")` or `std::fs::metadata()` directly. Always accept the trait as a parameter (`&impl GitExecutor` or `&impl FileSystem`).
+
+### 5. Commit Messages
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
@@ -61,7 +73,7 @@ docs: update README with new shortcuts
 test: add parse_shortstat edge cases
 ```
 
-### 5. Pull Requests
+### 6. Pull Requests
 
 1. Ensure `cargo fmt`, `cargo clippy`, and `cargo test` all pass.
 2. Write a clear PR description explaining **what** changed and **why**.
@@ -74,25 +86,37 @@ test: add parse_shortstat edge cases
 src/
 ├── main.rs          # CLI args + async orchestration
 ├── scanner.rs       # Filesystem walker
-├── engine.rs        # Execution engine (branch/stash operations)
+├── engine.rs        # Execution engine (clean, prune, gc, deep clean)
+├── sys.rs           # System traits (GitExecutor, FileSystem) + MockSystem
+├── updater.rs       # Self-update checker
 ├── git/             # Git domain logic
-│   ├── models.rs    # Data structures
-│   └── commands.rs  # Git command wrappers
+│   ├── models.rs    # Data structures (RepoStatus, BranchInfo, StashInfo, WorktreeInfo)
+│   ├── commands.rs  # Git command wrappers + unit tests
+│   └── stats.rs     # Branch stats + size utilities + unit tests
 ├── ui.rs            # TUI runner
 └── ui/              # UI modules
-    ├── state.rs     # AppState + enums
+    ├── state.rs     # AppState + enums (Focus, ScannerEvent, UiAction)
     ├── events.rs    # Keyboard handler
-    └── components/  # Render functions (repos, details, graph)
+    ├── theme.rs     # Theme engine with persistence
+    └── components/  # Render functions
+        ├── header.rs        # App title bar
+        ├── repositories.rs  # Repo list pane
+        ├── details.rs       # Branch/stash/worktree details pane
+        ├── graph.rs         # Git commit graph pane
+        ├── dashboard.rs     # Aggregated stats overlay
+        ├── diff_modal.rs    # Branch/stash diff viewer
+        └── help.rs          # Context-sensitive help bar
 ```
 
 ### Adding a New Feature
 
 1. **Data model** → Add or modify structs in `git/models.rs`
-2. **Git logic** → Add commands in `git/commands.rs` with tests
+2. **Git logic** → Add commands in `git/commands.rs` using `&impl GitExecutor` / `&impl FileSystem`, with tests using `MockSystem`
 3. **State** → Update `AppState` in `ui/state.rs` if new UI state is needed
 4. **Events** → Handle new keys in `ui/events.rs`
 5. **Rendering** → Create or update components in `ui/components/`
-6. **Wire up** → Connect everything in `ui.rs` and/or `main.rs`
+6. **Engine** → If a new action is needed, add it to `Action` enum and `execute_action` in `engine.rs`
+7. **Wire up** → Connect everything in `ui.rs` and/or `main.rs`
 
 ## CI Pipeline
 
