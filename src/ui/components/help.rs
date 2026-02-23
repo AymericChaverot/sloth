@@ -13,7 +13,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .to_string()
         }
         Focus::Details => {
-            "Middle Pane: Up/Down navigate. Space to select. Enter to clean. 'v' to diff. 'g' toggle graph. Left repos."
+            "Middle Pane: Up/Down navigate. Space select. 'A' auto-select. Enter clean. 'v' diff. 'g' graph. Left repos."
                 .to_string()
         }
         Focus::GitGraph => {

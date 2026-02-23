@@ -102,6 +102,19 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                             }
                         }
                     }
+                    KeyCode::Char('A') | KeyCode::Char('a') => {
+                        if state.focus == Focus::Details && !state.repositories.is_empty() {
+                            let repo = &state.repositories[state.repo_index];
+                            let mut set =
+                                state.selected_branches.entry(state.repo_index).or_default();
+                            for branch in &repo.branches {
+                                // Smart auto-select logic
+                                if branch.is_dead || branch.is_merged {
+                                    set.insert(branch.name.clone());
+                                }
+                            }
+                        }
+                    }
                     KeyCode::Enter => {
                         if state.focus == Focus::Details {
                             state.action = Some(UiAction::CleanRepo);
