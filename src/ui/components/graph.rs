@@ -3,12 +3,13 @@ use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     text::Line,
     widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+    let theme = crate::ui::theme::get_theme(state.theme_index);
     let render_height = area.height.saturating_sub(2) as usize; // Account for borders
 
     let mut graph_lines = Vec::new();
@@ -65,9 +66,9 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .borders(Borders::ALL)
                 .title("Git Graph")
                 .border_style(if state.focus == Focus::GitGraph {
-                    Style::default().fg(Color::Yellow)
+                    Style::default().fg(theme.border_active)
                 } else {
-                    Style::default()
+                    Style::default().fg(theme.border)
                 }),
         )
         // Note: Y scroll is ALWAYS 0 for the Paragraph because we already sliced the collection!

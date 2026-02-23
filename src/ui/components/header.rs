@@ -72,7 +72,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let header = Paragraph::new(header_lines).alignment(Alignment::Left);
     f.render_widget(header, chunks[0]);
 
-    let theme_label = Paragraph::new(format!("🎨 Theme: {}", theme.name))
+    let theme_label = Paragraph::new(format!("Theme: {}", theme.name))
         .style(Style::default().fg(theme.primary))
         .alignment(Alignment::Right)
         .block(Block::default());
