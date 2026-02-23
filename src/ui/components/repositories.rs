@@ -8,6 +8,21 @@ use ratatui::{
     },
 };
 
+fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{} KB", bytes / KB)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let repo_block_title = if state.is_scanning {
         format!("Repositories (Scanning... {} found)", state.scanned_count)
@@ -44,12 +59,23 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             .enumerate()
             .map(|(i, repo)| {
                 let prefix = if i == state.repo_index { ">> " } else { "   " };
-                let content = format!("{}{}", prefix, repo.path.display());
+                let mut content_spans = vec![
+                    ratatui::text::Span::raw(prefix),
+                    ratatui::text::Span::raw(repo.path.display().to_string()),
+                ];
+                if let Some(size) = repo.size_bytes {
+                    let size_str = format_size(size);
+                    content_spans.push(ratatui::text::Span::styled(
+                        format!(" [{}]", size_str),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
+
                 let mut style = Style::default();
                 if i == state.repo_index && state.focus == Focus::Repositories {
                     style = style.fg(Color::Yellow);
                 }
-                ListItem::new(content).style(style)
+                ListItem::new(ratatui::text::Line::from(content_spans)).style(style)
             })
             .collect();
 

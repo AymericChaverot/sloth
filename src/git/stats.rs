@@ -60,6 +60,22 @@ pub(crate) fn get_branch_stats(
     (ahead, behind, insertions, deletions)
 }
 
+pub fn get_repo_size(path: &Path) -> Result<u64, std::io::Error> {
+    let mut size = 0;
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                size += get_repo_size(&path)?;
+            } else {
+                size += entry.metadata()?.len();
+            }
+        }
+    }
+    Ok(size)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

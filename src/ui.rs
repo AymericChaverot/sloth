@@ -42,6 +42,7 @@ pub fn run_tui(
                         stashes: Vec::new(),
                         graph_lines: None,
                         analyzed: false,
+                        size_bytes: None,
                     });
                 }
                 ScannerEvent::ScanComplete => state.is_scanning = false,

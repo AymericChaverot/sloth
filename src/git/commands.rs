@@ -115,6 +115,8 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
         }
     }
 
+    let size_bytes = super::stats::get_repo_size(&path.join(".git")).ok();
+
     Ok(RepoStatus {
         path: path.to_path_buf(),
         remote_url,
@@ -122,6 +124,7 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
         stashes,
         graph_lines: None,
         analyzed: true,
+        size_bytes,
     })
 }
 
