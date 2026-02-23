@@ -1,1 +1,23 @@
+# ─── Rust / Cargo ────────────────────────────────────────
 /target
+**/*.rs.bk
+*.pdb
+
+# ─── IDE & Editor ────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ─── OS files ────────────────────────────────────────────
+.DS_Store
+Desktop.ini
+ehthumbs.db
+ehthumbs_vista.db
+
+# ─── Environment ─────────────────────────────────────────
+.env
+.env.*
