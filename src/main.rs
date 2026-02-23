@@ -47,12 +47,35 @@ async fn main() -> anyhow::Result<()> {
             }));
         }
 
+        let mut size_tasks_args = Vec::new();
+
         for task in tasks {
             if let Ok(Ok(status)) = task.await {
+                size_tasks_args.push((
+                    status.path.clone(),
+                    status
+                        .worktrees
+                        .iter()
+                        .map(|w| w.path.clone())
+                        .collect::<Vec<_>>(),
+                ));
                 let _ = tx.send(ui::ScannerEvent::RepoAnalyzed(status));
             }
         }
         let _ = tx.send(ui::ScannerEvent::AnalysisComplete);
+
+        // Spawn background size calculator (sequential to avoid I/O thrashing)
+        tokio::task::spawn_blocking(move || {
+            for (path, wt_paths) in size_tasks_args {
+                let sizes = git::compute_repo_sizes(&path, wt_paths);
+                let _ = tx.send(ui::ScannerEvent::SizeComputed {
+                    path,
+                    size_bytes: sizes.0,
+                    untracked_size_bytes: sizes.1,
+                    worktree_sizes: sizes.2,
+                });
+            }
+        });
     });
 
     // Spawn background update check (non-blocking, best-effort)

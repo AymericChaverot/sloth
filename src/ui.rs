@@ -59,6 +59,22 @@ pub fn run_tui(
                     }
                     state.analyzed_count += 1;
                 }
+                ScannerEvent::SizeComputed {
+                    path,
+                    size_bytes,
+                    untracked_size_bytes,
+                    worktree_sizes,
+                } => {
+                    if let Some(repo) = state.repositories.iter_mut().find(|r| r.path == path) {
+                        repo.size_bytes = size_bytes;
+                        repo.untracked_size_bytes = untracked_size_bytes;
+                        for wt in repo.worktrees.iter_mut() {
+                            if let Some(&size) = worktree_sizes.get(&wt.path) {
+                                wt.size_bytes = size;
+                            }
+                        }
+                    }
+                }
                 ScannerEvent::AnalysisComplete => state.is_analyzing = false,
                 ScannerEvent::UpdateAvailable(version) => {
                     state.update_available = Some(version);

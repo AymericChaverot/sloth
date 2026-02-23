@@ -8,6 +8,12 @@ pub enum ScannerEvent {
     RepoFound(PathBuf),
     ScanComplete,
     RepoAnalyzed(RepoStatus),
+    SizeComputed {
+        path: PathBuf,
+        size_bytes: Option<u64>,
+        untracked_size_bytes: Option<u64>,
+        worktree_sizes: HashMap<String, Option<u64>>,
+    },
     AnalysisComplete,
     UpdateAvailable(String),
 }

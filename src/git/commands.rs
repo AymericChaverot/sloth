@@ -148,11 +148,10 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
             for line in out_str.lines() {
                 if line.starts_with("worktree ") {
                     if let Some(wt) = current_wt.take() {
-                        let wt_size = super::stats::get_repo_size(Path::new(&wt)).ok();
                         worktrees.push(WorktreeInfo {
                             path: wt,
                             branch: current_branch.take(),
-                            size_bytes: wt_size,
+                            size_bytes: None,
                         });
                     }
                     current_wt = Some(line.replace("worktree ", "").trim().to_string());
@@ -162,43 +161,14 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
                 }
             }
             if let Some(wt) = current_wt.take() {
-                let wt_size = super::stats::get_repo_size(Path::new(&wt)).ok();
                 worktrees.push(WorktreeInfo {
                     path: wt,
                     branch: current_branch.take(),
-                    size_bytes: wt_size,
+                    size_bytes: None,
                 });
             }
         }
     }
-
-    let mut untracked_size_bytes = Some(0);
-    if let Ok(output) = Command::new("git")
-        .args(["clean", "-ndx"])
-        .current_dir(path)
-        .output()
-    {
-        if output.status.success() {
-            let mut size = 0;
-            let out_str = String::from_utf8_lossy(&output.stdout);
-            for line in out_str.lines() {
-                if line.starts_with("Would remove ") {
-                    let to_remove = line.trim_start_matches("Would remove ");
-                    let full_path = path.join(to_remove);
-                    if full_path.exists() {
-                        if full_path.is_dir() {
-                            size += super::stats::get_repo_size(&full_path).unwrap_or(0);
-                        } else {
-                            size += std::fs::metadata(&full_path).map(|m| m.len()).unwrap_or(0);
-                        }
-                    }
-                }
-            }
-            untracked_size_bytes = Some(size);
-        }
-    }
-
-    let size_bytes = super::stats::get_repo_size(&path.join(".git")).ok();
 
     Ok(RepoStatus {
         path: path.to_path_buf(),
@@ -208,9 +178,62 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
         worktrees,
         graph_lines: None,
         analyzed: true,
-        size_bytes,
-        untracked_size_bytes,
+        size_bytes: None,
+        untracked_size_bytes: None,
     })
+}
+
+/// Computes the disk space sizes asynchronously to avoid blocking the main analysis loop
+pub fn compute_repo_sizes(
+    path: &Path,
+    worktree_paths: Vec<String>,
+) -> (
+    Option<u64>,                                    // size_bytes (.git)
+    Option<u64>,                                    // untracked_size_bytes
+    std::collections::HashMap<String, Option<u64>>, // worktree sizes
+) {
+    let size_bytes = super::stats::get_repo_size(&path.join(".git")).ok();
+
+    let mut untracked_size = 0;
+    let mut has_untracked = false;
+    if let Ok(output) = Command::new("git")
+        .args(["clean", "-ndx"])
+        .current_dir(path)
+        .output()
+    {
+        if output.status.success() {
+            has_untracked = true;
+            let out_str = String::from_utf8_lossy(&output.stdout);
+            for line in out_str.lines() {
+                if line.starts_with("Would remove ") {
+                    let to_remove = line.trim_start_matches("Would remove ");
+                    let full_path = path.join(to_remove);
+                    if full_path.exists() {
+                        if full_path.is_dir() {
+                            untracked_size += super::stats::get_repo_size(&full_path).unwrap_or(0);
+                        } else {
+                            untracked_size +=
+                                std::fs::metadata(&full_path).map(|m| m.len()).unwrap_or(0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let untracked_size_bytes = if has_untracked {
+        Some(untracked_size)
+    } else {
+        None
+    };
+
+    let mut worktree_sizes = std::collections::HashMap::new();
+    for wt in worktree_paths {
+        let s = super::stats::get_repo_size(Path::new(&wt)).ok();
+        worktree_sizes.insert(wt, s);
+    }
+
+    (size_bytes, untracked_size_bytes, worktree_sizes)
 }
 
 pub fn get_git_graph(path: &Path) -> Result<Vec<String>, GitError> {
