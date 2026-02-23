@@ -162,18 +162,22 @@ pub fn run_tui(
                     .split(chunks[1])
             };
 
-            if !state.graph_maximized {
-                components::repositories::render(f, &mut state, main_chunks[0]);
-                components::details::render(f, &mut state, main_chunks[1]);
-            }
+            if state.focus == state::Focus::Dashboard {
+                components::dashboard::render(f, &mut state, chunks[1]);
+            } else {
+                if !state.graph_maximized {
+                    components::repositories::render(f, &mut state, main_chunks[0]);
+                    components::details::render(f, &mut state, main_chunks[1]);
+                }
 
-            if state.show_graph || state.graph_maximized {
-                let target_chunk = if state.graph_maximized {
-                    main_chunks[0]
-                } else {
-                    main_chunks[2]
-                };
-                components::graph::render(f, &mut state, target_chunk);
+                if state.show_graph || state.graph_maximized {
+                    let target_chunk = if state.graph_maximized {
+                        main_chunks[0]
+                    } else {
+                        main_chunks[2]
+                    };
+                    components::graph::render(f, &mut state, target_chunk);
+                }
             }
 
             // Help bar

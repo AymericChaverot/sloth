@@ -1,3 +1,4 @@
+pub mod dashboard;
 pub mod details;
 pub mod diff_modal;
 pub mod graph;
