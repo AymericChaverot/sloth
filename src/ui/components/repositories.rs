@@ -2,7 +2,7 @@ use crate::ui::state::{AppState, Focus};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     widgets::{
         Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
     },
@@ -24,6 +24,8 @@ fn format_size(bytes: u64) -> String {
 }
 
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+    let theme = crate::ui::theme::get_theme(state.theme_index);
+
     let repo_block_title = if state.is_scanning {
         format!("Repositories (Scanning... {} found)", state.scanned_count)
     } else if state.is_analyzing {
@@ -39,16 +41,16 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         .title(repo_block_title)
         .borders(Borders::ALL)
         .border_style(if state.focus == Focus::Repositories {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(theme.border_active)
         } else {
-            Style::default()
+            Style::default().fg(theme.border)
         });
 
     if state.is_scanning && state.repositories.is_empty() {
         let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
         let frame = spinner[(state.loader_tick / 4) % spinner.len()];
         let p = Paragraph::new(format!("{} Scanning directory structure...", frame))
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(theme.text_dimmed))
             .block(repo_block)
             .alignment(ratatui::layout::Alignment::Center);
         f.render_widget(p, area);
@@ -67,20 +69,20 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     let size_str = format_size(size);
                     content_spans.push(ratatui::text::Span::styled(
                         format!(" [{}]", size_str),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme.text_dimmed),
                     ));
                 } else if !repo.analyzed {
                     let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
                     let frame = spinner[(state.loader_tick / 4) % spinner.len()];
                     content_spans.push(ratatui::text::Span::styled(
                         format!(" [{}]", frame),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme.text_dimmed),
                     ));
                 }
 
-                let mut style = Style::default();
+                let mut style = Style::default().fg(theme.text_normal);
                 if i == state.repo_index && state.focus == Focus::Repositories {
-                    style = style.fg(Color::Yellow);
+                    style = style.fg(theme.primary);
                 }
                 ListItem::new(ratatui::text::Line::from(content_spans)).style(style)
             })

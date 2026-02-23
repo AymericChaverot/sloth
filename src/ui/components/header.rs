@@ -30,7 +30,8 @@ fn hsl_to_rgb(h: f64) -> (u8, u8, u8) {
     )
 }
 
-pub fn render(f: &mut Frame, _state: &mut AppState, area: Rect) {
+pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+    let theme = crate::ui::theme::get_theme(state.theme_index);
     let version = env!("CARGO_PKG_VERSION");
     let art_lines = [
         "  ▄▄▄▄▄  ▄▄                ",
@@ -58,7 +59,7 @@ pub fn render(f: &mut Frame, _state: &mut AppState, area: Rect) {
         if row == art_lines.len() - 1 {
             spans.push(Span::styled(
                 format!(" v{} - The git repository cleaner tool", version),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.text_dimmed),
             ));
         }
         header_lines.push(Line::from(spans));

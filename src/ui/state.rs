@@ -51,6 +51,7 @@ pub struct AppState {
     pub diff_modal_open: bool,
     pub diff_lines: Option<Vec<String>>,
     pub diff_scroll: u16,
+    pub theme_index: usize,
 }
 
 impl AppState {
@@ -85,6 +86,7 @@ impl AppState {
             diff_modal_open: false,
             diff_lines: None,
             diff_scroll: 0,
+            theme_index: 0,
         }
     }
 }

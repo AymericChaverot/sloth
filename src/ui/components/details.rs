@@ -2,7 +2,7 @@ use crate::ui::state::{AppState, Focus};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{
         Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
@@ -10,6 +10,7 @@ use ratatui::{
 };
 
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+    let theme = crate::ui::theme::get_theme(state.theme_index);
     let mut detail_items: Vec<ListItem> = Vec::new();
 
     let is_repo_analyzed = state
@@ -19,8 +20,9 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     if let Some(repo) = state.repositories.get(state.repo_index) {
         if repo.analyzed {
-            detail_items
-                .push(ListItem::new("--- Branches ---").style(Style::default().fg(Color::Blue)));
+            detail_items.push(
+                ListItem::new("--- Branches ---").style(Style::default().fg(theme.secondary)),
+            );
 
             let selected_b = state.selected_branches.entry(state.repo_index).or_default();
             for (b_idx, branch) in repo.branches.iter().enumerate() {
@@ -42,27 +44,27 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     Span::styled(
                         is_active,
                         if is_selected {
-                            Style::default().fg(Color::Yellow)
+                            Style::default().fg(theme.primary)
                         } else {
-                            Style::default()
+                            Style::default().fg(theme.text_normal)
                         },
                     ),
                     Span::styled(
                         checkbox,
                         if is_selected {
-                            Style::default().fg(Color::Yellow)
+                            Style::default().fg(theme.primary)
                         } else {
-                            Style::default()
+                            Style::default().fg(theme.text_normal)
                         },
                     ),
                     Span::styled(
                         branch.name.clone() + dead_marker,
                         if branch.is_dead {
-                            Style::default().fg(Color::Red)
+                            Style::default().fg(theme.error)
                         } else if is_selected {
-                            Style::default().fg(Color::Yellow)
+                            Style::default().fg(theme.primary)
                         } else {
-                            Style::default()
+                            Style::default().fg(theme.text_normal)
                         },
                     ),
                 ];
@@ -70,15 +72,12 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 if let Some(ref date) = branch.last_commit_date {
                     spans.push(Span::styled(
                         format!(" ({})", date),
-                        Style::default().fg(Color::Cyan),
+                        Style::default().fg(theme.secondary),
                     ));
                 }
 
                 if branch.is_merged {
-                    spans.push(Span::styled(
-                        " (Merged)",
-                        Style::default().fg(Color::LightMagenta),
-                    ));
+                    spans.push(Span::styled(" (Merged)", Style::default().fg(theme.merged)));
                 }
 
                 let display_stats = if branch.is_dead || branch.upstream.is_some() {
@@ -90,7 +89,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     {
                         spans.push(Span::styled(
                             " (Up to date with upstream)",
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(theme.text_dimmed),
                         ));
                         false
                     } else {
@@ -99,7 +98,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 } else {
                     spans.push(Span::styled(
                         " (Local)",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme.text_dimmed),
                     ));
                     false
                 };
@@ -109,58 +108,58 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     if branch.ahead > 0 {
                         spans.push(Span::styled(
                             format!("\u{2191}{}", branch.ahead),
-                            Style::default().fg(Color::Green),
+                            Style::default().fg(theme.success),
                         ));
                     } else {
                         spans.push(Span::styled(
                             format!("\u{2191}0"),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(theme.text_dimmed),
                         ));
                     }
                     spans.push(Span::raw(" "));
                     if branch.behind > 0 {
                         spans.push(Span::styled(
                             format!("\u{2193}{}", branch.behind),
-                            Style::default().fg(Color::Red),
+                            Style::default().fg(theme.error),
                         ));
                     } else {
                         spans.push(Span::styled(
                             format!("\u{2193}0"),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(theme.text_dimmed),
                         ));
                     }
-                    spans.push(Span::raw(" ("));
+                    spans.push(Span::styled(" (", Style::default().fg(theme.text_normal)));
                     if branch.diff_insertions > 0 {
                         spans.push(Span::styled(
                             format!("+{}", branch.diff_insertions),
-                            Style::default().fg(Color::Green),
+                            Style::default().fg(theme.success),
                         ));
                     } else {
                         spans.push(Span::styled(
                             format!("+0"),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(theme.text_dimmed),
                         ));
                     }
                     spans.push(Span::raw(" "));
                     if branch.diff_deletions > 0 {
                         spans.push(Span::styled(
                             format!("-{}", branch.diff_deletions),
-                            Style::default().fg(Color::Red),
+                            Style::default().fg(theme.error),
                         ));
                     } else {
                         spans.push(Span::styled(
                             format!("-0"),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(theme.text_dimmed),
                         ));
                     }
-                    spans.push(Span::raw(")"));
+                    spans.push(Span::styled(")", Style::default().fg(theme.text_normal)));
                 }
 
                 detail_items.push(ListItem::new(Line::from(spans)));
             }
 
             detail_items
-                .push(ListItem::new("--- Stashes ---").style(Style::default().fg(Color::Blue)));
+                .push(ListItem::new("--- Stashes ---").style(Style::default().fg(theme.secondary)));
             let selected_s = state.selected_stashes.entry(state.repo_index).or_default();
             for (s_idx, stash) in repo.stashes.iter().enumerate() {
                 let actual_idx = repo.branches.len() + s_idx;
@@ -181,25 +180,25 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     Span::styled(
                         is_active,
                         if is_selected {
-                            Style::default().fg(Color::Yellow)
+                            Style::default().fg(theme.primary)
                         } else {
-                            Style::default()
+                            Style::default().fg(theme.text_normal)
                         },
                     ),
                     Span::styled(
                         checkbox,
                         if is_selected {
-                            Style::default().fg(Color::Yellow)
+                            Style::default().fg(theme.primary)
                         } else {
-                            Style::default()
+                            Style::default().fg(theme.text_normal)
                         },
                     ),
                     Span::styled(
                         stash.message.clone(),
                         if is_selected {
-                            Style::default().fg(Color::Yellow)
+                            Style::default().fg(theme.primary)
                         } else {
-                            Style::default()
+                            Style::default().fg(theme.text_normal)
                         },
                     ),
                 ];
@@ -223,7 +222,10 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     if let Some(repo) = state.repositories.get(state.repo_index) {
         if let Some(url) = &repo.remote_url {
             title_spans.push(Span::raw(" ["));
-            title_spans.push(Span::styled(url.clone(), Style::default().fg(Color::Cyan)));
+            title_spans.push(Span::styled(
+                url.clone(),
+                Style::default().fg(theme.secondary),
+            ));
             title_spans.push(Span::raw("]"));
         }
     }
@@ -232,9 +234,9 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         .borders(Borders::ALL)
         .title(Line::from(title_spans))
         .border_style(if state.focus == Focus::Details {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(theme.border_active)
         } else {
-            Style::default()
+            Style::default().fg(theme.border)
         });
 
     if state.repositories.is_empty() {
@@ -248,7 +250,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             "No repositories found.".to_string()
         };
         let p = Paragraph::new(text)
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(theme.text_dimmed))
             .block(detail_block)
             .alignment(ratatui::layout::Alignment::Center);
         f.render_widget(p, area);
@@ -258,7 +260,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         let frame = spinner[(state.loader_tick / 4) % spinner.len()];
         let text = format!("{} Analyzing repository...", frame);
         let p = Paragraph::new(text)
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(theme.text_dimmed))
             .block(detail_block)
             .alignment(ratatui::layout::Alignment::Center);
         f.render_widget(p, area);

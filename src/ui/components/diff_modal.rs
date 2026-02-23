@@ -3,7 +3,7 @@ use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::Style,
     text::Text,
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -12,6 +12,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     if !state.diff_modal_open {
         return;
     }
+    let theme = crate::ui::theme::get_theme(state.theme_index);
 
     let diff_text = if let Some(ref lines) = state.diff_lines {
         if lines.is_empty() {
@@ -35,7 +36,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let block = Block::default()
         .title(" Diff Preview (Esc/v to close, Up/Down to scroll) ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(theme.secondary));
 
     let paragraph = Paragraph::new(diff_text).block(block).scroll((0, 0)); // Parsing already sliced lines, so scroll is 0.
 

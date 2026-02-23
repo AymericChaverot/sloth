@@ -14,6 +14,7 @@ use std::sync::mpsc::Receiver;
 pub mod components;
 pub mod events;
 pub mod state;
+pub mod theme;
 
 pub use state::{AppState, ScannerEvent, UiAction};
 

@@ -6,9 +6,10 @@ use ratatui::{
 };
 
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+    let theme = crate::ui::theme::get_theme(state.theme_index);
     let mut help_text = match state.focus {
         Focus::Repositories => {
-            "Left Pane: Up/Down navigate. Right enter details. 'p' prune. 'c' gc. 'g' toggle graph. 'q' quit."
+            "Left Pane: Up/Down navigate. Right enter details. 'p' prune. 'c' gc. 'g' toggle graph. 't' theme. 'q' quit."
                 .to_string()
         }
         Focus::Details => {
@@ -16,7 +17,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .to_string()
         }
         Focus::GitGraph => {
-            "Right Pane: Arrows to scroll. 'f' fullscreen. 'Esc' or 'g' back. 'q' quit.".to_string()
+            "Right Pane: Arrows to scroll. 'f' fullscreen. 't' theme. 'Esc' or 'g' back. 'q' quit.".to_string()
         }
     };
     if let Some(ref ver) = state.update_available {
@@ -25,7 +26,9 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             ver, help_text
         );
     }
-    let details_footer =
-        Paragraph::new(help_text).block(Block::default().borders(Borders::ALL).title("Help"));
+    let title = format!("Help (Theme: {})", theme.name);
+    let details_footer = Paragraph::new(help_text)
+        .style(ratatui::style::Style::default().fg(theme.text_dimmed))
+        .block(Block::default().borders(Borders::ALL).title(title));
     f.render_widget(details_footer, area);
 }

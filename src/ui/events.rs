@@ -120,6 +120,10 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                             state.should_quit = true;
                         }
                     }
+                    KeyCode::Char('t') => {
+                        state.theme_index =
+                            (state.theme_index + 1) % crate::ui::theme::THEMES.len();
+                    }
                     KeyCode::Char('v') => {
                         if state.focus == Focus::Details {
                             state.diff_modal_open = true;
