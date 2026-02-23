@@ -1,0 +1,97 @@
+use crate::git::RepoStatus;
+use ratatui::widgets::ListState;
+use std::collections::{HashMap, HashSet};
+
+#[derive(Debug)]
+pub enum ScannerEvent {
+    RepoFound,
+    ScanComplete,
+    RepoAnalyzed(RepoStatus),
+    AnalysisComplete,
+    UpdateAvailable(String),
+}
+
+#[derive(PartialEq, Debug)]
+pub enum Focus {
+    Repositories,
+    Details,
+    GitGraph,
+}
+
+pub struct AppState {
+    pub repositories: Vec<RepoStatus>,
+    pub focus: Focus,
+    pub repo_index: usize,
+    pub detail_index: usize,
+    pub repo_state: ListState,
+    pub detail_state: ListState,
+    pub graph_scroll_y: u16,
+    pub graph_scroll_x: u16,
+    pub selected_branches: HashMap<usize, HashSet<String>>,
+    pub selected_stashes: HashMap<usize, HashSet<usize>>,
+    pub show_graph: bool,
+    pub graph_maximized: bool,
+    pub should_quit: bool,
+    pub should_execute: bool,
+    pub is_scanning: bool,
+    pub is_analyzing: bool,
+    pub scanned_count: usize,
+    pub analyzed_count: usize,
+    pub loader_tick: usize,
+    pub update_available: Option<String>,
+    pub is_updating: bool,
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        let mut repo_state = ListState::default();
+        repo_state.select(Some(0));
+        let mut detail_state = ListState::default();
+        detail_state.select(Some(0));
+
+        Self {
+            repositories: Vec::new(),
+            focus: Focus::Repositories,
+            repo_index: 0,
+            detail_index: 0,
+            repo_state,
+            detail_state,
+            graph_scroll_y: 0,
+            graph_scroll_x: 0,
+            selected_branches: HashMap::new(),
+            selected_stashes: HashMap::new(),
+            show_graph: false,
+            graph_maximized: false,
+            should_quit: false,
+            should_execute: false,
+            is_scanning: true,
+            is_analyzing: true,
+            scanned_count: 0,
+            analyzed_count: 0,
+            loader_tick: 0,
+            update_available: None,
+            is_updating: false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_state_initialization() {
+        let state = AppState::new();
+        assert_eq!(state.focus, Focus::Repositories);
+        assert_eq!(state.repo_index, 0);
+        assert_eq!(state.detail_index, 0);
+        assert!(!state.show_graph);
+        assert!(!state.graph_maximized);
+        assert!(state.is_scanning);
+        assert!(state.is_analyzing);
+        assert_eq!(state.scanned_count, 0);
+        assert_eq!(state.analyzed_count, 0);
+        assert!(state.update_available.is_none());
+        assert!(!state.is_updating);
+    }
+}
