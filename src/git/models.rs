@@ -31,6 +31,7 @@ pub struct StashInfo {
 pub struct WorktreeInfo {
     pub path: String,
     pub branch: Option<String>,
+    pub size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -43,4 +44,5 @@ pub struct RepoStatus {
     pub graph_lines: Option<Vec<String>>,
     pub analyzed: bool,
     pub size_bytes: Option<u64>,
+    pub untracked_size_bytes: Option<u64>,
 }

@@ -66,6 +66,18 @@ async fn main() -> anyhow::Result<()> {
 
     // Start TUI
     if let Some((paths, action, branches, stashes, worktrees)) = ui::run_tui(state, rx)? {
+        let mut size_before = 0;
+        for path in &paths {
+            if let Ok(s) = crate::git::stats::get_repo_size(path) {
+                size_before += s;
+            }
+        }
+        for wt in &worktrees {
+            if let Ok(s) = crate::git::stats::get_repo_size(std::path::Path::new(wt)) {
+                size_before += s;
+            }
+        }
+
         let engine_action = match action {
             ui::UiAction::CleanRepo => {
                 if branches.is_empty() && stashes.is_empty() && worktrees.is_empty() {

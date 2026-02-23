@@ -45,6 +45,7 @@ pub fn run_tui(
                         graph_lines: None,
                         analyzed: false,
                         size_bytes: None,
+                        untracked_size_bytes: None,
                     });
                 }
                 ScannerEvent::ScanComplete => state.is_scanning = false,

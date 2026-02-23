@@ -148,9 +148,11 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
             for line in out_str.lines() {
                 if line.starts_with("worktree ") {
                     if let Some(wt) = current_wt.take() {
+                        let wt_size = super::stats::get_repo_size(Path::new(&wt)).ok();
                         worktrees.push(WorktreeInfo {
                             path: wt,
                             branch: current_branch.take(),
+                            size_bytes: wt_size,
                         });
                     }
                     current_wt = Some(line.replace("worktree ", "").trim().to_string());
@@ -160,11 +162,39 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
                 }
             }
             if let Some(wt) = current_wt.take() {
+                let wt_size = super::stats::get_repo_size(Path::new(&wt)).ok();
                 worktrees.push(WorktreeInfo {
                     path: wt,
                     branch: current_branch.take(),
+                    size_bytes: wt_size,
                 });
             }
+        }
+    }
+
+    let mut untracked_size_bytes = Some(0);
+    if let Ok(output) = Command::new("git")
+        .args(["clean", "-ndx"])
+        .current_dir(path)
+        .output()
+    {
+        if output.status.success() {
+            let mut size = 0;
+            let out_str = String::from_utf8_lossy(&output.stdout);
+            for line in out_str.lines() {
+                if line.starts_with("Would remove ") {
+                    let to_remove = line.trim_start_matches("Would remove ");
+                    let full_path = path.join(to_remove);
+                    if full_path.exists() {
+                        if full_path.is_dir() {
+                            size += super::stats::get_repo_size(&full_path).unwrap_or(0);
+                        } else {
+                            size += std::fs::metadata(&full_path).map(|m| m.len()).unwrap_or(0);
+                        }
+                    }
+                }
+            }
+            untracked_size_bytes = Some(size);
         }
     }
 
@@ -179,6 +209,7 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
         graph_lines: None,
         analyzed: true,
         size_bytes,
+        untracked_size_bytes,
     })
 }
 

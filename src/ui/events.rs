@@ -46,7 +46,9 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         }
                     }
                     KeyCode::Esc => {
-                        if state.focus == Focus::GitGraph {
+                        if state.focus == Focus::Dashboard {
+                            state.focus = Focus::Repositories;
+                        } else if state.focus == Focus::GitGraph {
                             state.graph_maximized = false;
                             state.focus = Focus::Details;
                         }
@@ -65,7 +67,11 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         }
                     }
                     KeyCode::Right => {
-                        if state.focus == Focus::Repositories && !state.repositories.is_empty() {
+                        if state.focus == Focus::Dashboard {
+                            state.focus = Focus::Repositories;
+                        } else if state.focus == Focus::Repositories
+                            && !state.repositories.is_empty()
+                        {
                             state.focus = Focus::Details;
                             state.detail_index = 0;
                         } else if state.focus == Focus::Details && state.show_graph {
@@ -75,7 +81,9 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         }
                     }
                     KeyCode::Left => {
-                        if state.focus == Focus::Details {
+                        if state.focus == Focus::Dashboard {
+                            state.focus = Focus::Repositories;
+                        } else if state.focus == Focus::Details {
                             state.focus = Focus::Repositories;
                         } else if state.focus == Focus::GitGraph {
                             if state.graph_scroll_x > 0 {
@@ -188,7 +196,11 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         }
                     }
                     KeyCode::Char('d') => {
-                        state.focus = Focus::Dashboard;
+                        if state.focus == Focus::Dashboard {
+                            state.focus = Focus::Repositories;
+                        } else {
+                            state.focus = Focus::Dashboard;
+                        }
                     }
                     KeyCode::Char('/') => {
                         state.is_searching = true;

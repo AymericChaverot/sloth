@@ -37,11 +37,26 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         format!("Repositories ({})", state.repositories.len())
     };
 
-    let title_suffix = if state.is_searching {
+    let mut title_suffix = if state.is_searching {
         format!(" (Searching: {})", state.search_query)
     } else {
         String::new()
     };
+
+    let selected_count = state.selected_repositories.len();
+    if selected_count > 0 {
+        let mut selected_recoverable = 0;
+        for &idx in &state.selected_repositories {
+            if let Some(repo) = state.repositories.get(idx) {
+                selected_recoverable += repo.untracked_size_bytes.unwrap_or(0);
+            }
+        }
+        title_suffix.push_str(&format!(
+            " [{} selected, {} recoverable]",
+            selected_count,
+            crate::git::stats::format_size(selected_recoverable)
+        ));
+    }
     let repo_block = Block::default()
         .title(format!("{}{}", repo_block_title, title_suffix))
         .borders(Borders::ALL)

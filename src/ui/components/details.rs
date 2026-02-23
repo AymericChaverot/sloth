@@ -304,7 +304,27 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::raw("Details")
         }
     } else {
-        Span::raw("Details (Branches, Stashes, Worktrees)")
+        let mut recoverable = 0;
+        if let Some(repo) = state.repositories.get(state.repo_index) {
+            let selected_wt = state
+                .selected_worktrees
+                .get(&state.repo_index)
+                .cloned()
+                .unwrap_or_default();
+            for wt in &repo.worktrees {
+                if selected_wt.contains(&wt.path) {
+                    recoverable += wt.size_bytes.unwrap_or(0);
+                }
+            }
+        }
+        if recoverable > 0 {
+            Span::raw(format!(
+                "Details (Branches, Stashes, Worktrees) [{} recoverable]",
+                crate::git::stats::format_size(recoverable)
+            ))
+        } else {
+            Span::raw("Details (Branches, Stashes, Worktrees)")
+        }
     }];
 
     if let Some(repo) = state.repositories.get(state.repo_index) {

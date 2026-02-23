@@ -6,21 +6,6 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-fn format_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{} KB", bytes / KB)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let theme = crate::ui::theme::get_theme(state.theme_index);
     let mut total_size: u64 = 0;
@@ -43,7 +28,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
     }
 
-    let size_str = format_size(total_size);
+    let size_str = crate::git::stats::format_size(total_size);
 
     let content = vec![
         ratatui::text::Line::from(vec![ratatui::text::Span::styled(

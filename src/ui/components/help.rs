@@ -9,7 +9,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let theme = crate::ui::theme::get_theme(state.theme_index);
     let mut help_text = match state.focus {
         Focus::Repositories => {
-            "Left Pane: Up/Down navigate. Space select. X deep clean. 'p' prune. 'c' gc. 'g' graph. 't' theme. 'q' quit."
+            "Left Pane: Up/Down navigate. Space select. X deep clean. 'p'/'c' prune/gc. 'd' dashboard. 'q' quit."
                 .to_string()
         }
         Focus::Details => {
