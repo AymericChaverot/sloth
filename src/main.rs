@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new();
 
     // Start TUI
-    if let Some((path, action, branches, stashes)) = ui::run_tui(state, rx)? {
+    if let Some((paths, action, branches, stashes)) = ui::run_tui(state, rx)? {
         let engine_action = match action {
             ui::UiAction::CleanRepo => {
                 if branches.is_empty() && stashes.is_empty() {
@@ -78,18 +78,30 @@ async fn main() -> anyhow::Result<()> {
             ui::UiAction::GarbageCollect => engine::Action::GarbageCollect,
         };
 
-        println!(
-            "\nExecuting {} on {} (Dry-run false)...",
-            match engine_action {
-                engine::Action::CleanRepo { .. } => "CleanRepo",
-                engine::Action::PruneRemotes => "PruneRemotes",
-                engine::Action::GarbageCollect => "GarbageCollect",
-            },
-            path.display()
-        );
+        if paths.len() == 1 {
+            println!(
+                "\nExecuting {} on {} (Dry-run false)...",
+                match engine_action {
+                    engine::Action::CleanRepo { .. } => "CleanRepo",
+                    engine::Action::PruneRemotes => "PruneRemotes",
+                    engine::Action::GarbageCollect => "GarbageCollect",
+                },
+                paths[0].display()
+            );
+        } else {
+            println!(
+                "\nExecuting {} on {} repositories (Dry-run false)...",
+                match engine_action {
+                    engine::Action::CleanRepo { .. } => "CleanRepo",
+                    engine::Action::PruneRemotes => "PruneRemotes",
+                    engine::Action::GarbageCollect => "GarbageCollect",
+                },
+                paths.len()
+            );
+        }
 
         let results = engine::execute_batch(
-            vec![path],
+            paths,
             engine_action,
             false, // REAL EXECUTION!
         )

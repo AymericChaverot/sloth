@@ -81,9 +81,20 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     }
                 }
 
-                let prefix = if i == state.repo_index { ">> " } else { "   " };
+                let is_focused = i == state.repo_index;
+                let prefix = if is_focused { ">> " } else { "   " };
+                let is_selected = state.selected_repositories.contains(&i);
+                let checkbox = if is_selected { "[x] " } else { "[ ] " };
                 let mut content_spans = vec![
                     ratatui::text::Span::raw(prefix),
+                    ratatui::text::Span::styled(
+                        checkbox,
+                        if is_selected {
+                            Style::default().fg(theme.primary)
+                        } else {
+                            Style::default().fg(theme.text_normal)
+                        },
+                    ),
                     ratatui::text::Span::raw(repo.path.display().to_string()),
                 ];
                 if let Some(size) = repo.size_bytes {

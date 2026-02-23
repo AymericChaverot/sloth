@@ -89,7 +89,13 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         }
                     }
                     KeyCode::Char(' ') => {
-                        if state.focus == Focus::Details && !state.repositories.is_empty() {
+                        if state.focus == Focus::Repositories && !state.repositories.is_empty() {
+                            if state.selected_repositories.contains(&state.repo_index) {
+                                state.selected_repositories.remove(&state.repo_index);
+                            } else {
+                                state.selected_repositories.insert(state.repo_index);
+                            }
+                        } else if state.focus == Focus::Details && !state.repositories.is_empty() {
                             let repo = &state.repositories[state.repo_index];
                             let b_len = repo.branches.len();
                             if state.detail_index < b_len {

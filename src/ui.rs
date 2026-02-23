@@ -21,7 +21,7 @@ pub use state::{AppState, ScannerEvent, UiAction};
 pub fn run_tui(
     mut state: AppState,
     rx: Receiver<ScannerEvent>,
-) -> io::Result<Option<(PathBuf, UiAction, Vec<String>, Vec<usize>)>> {
+) -> io::Result<Option<(Vec<PathBuf>, UiAction, Vec<String>, Vec<usize>)>> {
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
 
@@ -217,7 +217,20 @@ pub fn run_tui(
     stdout().execute(LeaveAlternateScreen)?;
 
     if let Some(action) = state.action {
-        let path = state.repositories[state.repo_index].path.clone();
+        let mut paths = Vec::new();
+
+        // If 'CleanRepo', it only applies to the currently focused repository (not bulk)
+        if matches!(action, UiAction::CleanRepo) || state.selected_repositories.is_empty() {
+            paths.push(state.repositories[state.repo_index].path.clone());
+        } else {
+            // Bulk action triggered
+            for idx in &state.selected_repositories {
+                if let Some(repo) = state.repositories.get(*idx) {
+                    paths.push(repo.path.clone());
+                }
+            }
+        }
+
         let branches = state
             .selected_branches
             .remove(&state.repo_index)
@@ -230,7 +243,7 @@ pub fn run_tui(
             .unwrap_or_default()
             .into_iter()
             .collect();
-        Ok(Some((path, action, branches, stashes)))
+        Ok(Some((paths, action, branches, stashes)))
     } else {
         Ok(None)
     }
