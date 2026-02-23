@@ -1,4 +1,28 @@
 use ratatui::style::Color;
+use std::fs;
+use std::path::PathBuf;
+
+fn get_config_path() -> PathBuf {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".sloth_theme")
+}
+
+pub fn load_saved_theme() -> usize {
+    if let Ok(content) = fs::read_to_string(get_config_path()) {
+        if let Ok(idx) = content.trim().parse::<usize>() {
+            if idx < THEMES.len() {
+                return idx;
+            }
+        }
+    }
+    0
+}
+
+pub fn save_theme(index: usize) {
+    let _ = fs::write(get_config_path(), index.to_string());
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]

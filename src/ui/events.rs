@@ -123,6 +123,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                     KeyCode::Char('t') => {
                         state.theme_index =
                             (state.theme_index + 1) % crate::ui::theme::THEMES.len();
+                        crate::ui::theme::save_theme(state.theme_index);
                     }
                     KeyCode::Char('v') => {
                         if state.focus == Focus::Details {

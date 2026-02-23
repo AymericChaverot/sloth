@@ -1,10 +1,10 @@
 use crate::ui::state::AppState;
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Block, Paragraph},
 };
 
 /// HSL to RGB conversion for rainbow gradient
@@ -64,6 +64,31 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
         header_lines.push(Line::from(spans));
     }
-    let header = Paragraph::new(header_lines).alignment(ratatui::layout::Alignment::Left);
-    f.render_widget(header, area);
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(30)].as_ref())
+        .split(area);
+
+    let header = Paragraph::new(header_lines).alignment(Alignment::Left);
+    f.render_widget(header, chunks[0]);
+
+    let theme_label = Paragraph::new(format!("🎨 Theme: {}", theme.name))
+        .style(Style::default().fg(theme.primary))
+        .alignment(Alignment::Right)
+        .block(Block::default());
+
+    // We want the theme label vertically aligned at the bottom (or same level as the version line).
+    // The version line is at art_lines.len(). We can just lay it out.
+    let theme_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Length(art_lines.len() as u16),
+                Constraint::Length(1),
+            ]
+            .as_ref(),
+        )
+        .split(chunks[1]);
+
+    f.render_widget(theme_label, theme_layout[1]);
 }

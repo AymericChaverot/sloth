@@ -86,7 +86,7 @@ impl AppState {
             diff_modal_open: false,
             diff_lines: None,
             diff_scroll: 0,
-            theme_index: 0,
+            theme_index: crate::ui::theme::load_saved_theme(),
         }
     }
 }
