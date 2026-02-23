@@ -17,6 +17,7 @@ pub struct BranchInfo {
     pub behind: usize,
     pub diff_insertions: usize,
     pub diff_deletions: usize,
+    pub last_commit_date: Option<String>,
 }
 
 #[derive(Debug, Clone)]

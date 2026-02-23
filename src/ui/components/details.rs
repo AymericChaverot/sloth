@@ -67,6 +67,13 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     ),
                 ];
 
+                if let Some(ref date) = branch.last_commit_date {
+                    spans.push(Span::styled(
+                        format!(" ({})", date),
+                        Style::default().fg(Color::Cyan),
+                    ));
+                }
+
                 let display_stats = if branch.is_dead || branch.upstream.is_some() {
                     if !branch.is_dead
                         && branch.ahead == 0

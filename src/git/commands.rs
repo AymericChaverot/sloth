@@ -30,7 +30,7 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
     if let Ok(output) = Command::new("git")
         .args([
             "branch",
-            "--format=%(refname:short)|%(HEAD)|%(upstream:track)|%(upstream:short)",
+            "--format=%(refname:short)|%(HEAD)|%(upstream:track)|%(upstream:short)|%(committerdate:relative)",
         ])
         .current_dir(path)
         .output()
@@ -48,6 +48,11 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
                     } else {
                         None
                     };
+                    let last_commit_date = if parts.len() >= 5 && !parts[4].trim().is_empty() {
+                        Some(parts[4].trim().to_string())
+                    } else {
+                        None
+                    };
 
                     branches.push(BranchInfo {
                         name,
@@ -58,6 +63,7 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
                         behind: 0,
                         diff_insertions: 0,
                         diff_deletions: 0,
+                        last_commit_date,
                     });
                 }
             }
