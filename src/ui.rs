@@ -86,6 +86,38 @@ pub fn run_tui(
             }
         }
 
+        // Fetch diff if modal is opened and lines are empty
+        if state.diff_modal_open && state.diff_lines.is_none() {
+            if let Some(repo) = state.repositories.get(state.repo_index) {
+                let b_len = repo.branches.len();
+                if state.detail_index < b_len {
+                    let b = &repo.branches[state.detail_index];
+                    let target = if !b.is_dead && b.upstream.is_some() {
+                        b.upstream.clone().unwrap()
+                    } else if repo.branches.iter().any(|b| b.name == "main") {
+                        "main".to_string()
+                    } else {
+                        "master".to_string()
+                    };
+                    let diff_target = format!("{}...{}", target, b.name);
+                    if let Ok(diff) =
+                        crate::git::commands::get_branch_diff(&repo.path, &diff_target)
+                    {
+                        state.diff_lines = Some(diff);
+                    }
+                } else {
+                    let s_idx = state.detail_index.saturating_sub(b_len);
+                    if let Some(stash) = repo.stashes.get(s_idx) {
+                        if let Ok(diff) =
+                            crate::git::commands::get_stash_diff(&repo.path, stash.index)
+                        {
+                            state.diff_lines = Some(diff);
+                        }
+                    }
+                }
+            }
+        }
+
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -144,6 +176,9 @@ pub fn run_tui(
 
             // Help bar
             components::help::render(f, &mut state, chunks[2]);
+
+            // Diff Modal Overlay (if open)
+            components::diff_modal::render(f, &mut state, f.area());
         })?;
 
         events::handle_events(&mut state)?;

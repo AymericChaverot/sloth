@@ -6,6 +6,22 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
     if event::poll(Duration::from_millis(16))? {
         if let Event::Key(key) = event::read()? {
             if key.kind == event::KeyEventKind::Press {
+                if state.diff_modal_open {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('v') => {
+                            state.diff_modal_open = false;
+                        }
+                        KeyCode::Up => {
+                            state.diff_scroll = state.diff_scroll.saturating_sub(1);
+                        }
+                        KeyCode::Down => {
+                            state.diff_scroll = state.diff_scroll.saturating_add(1);
+                        }
+                        _ => {}
+                    }
+                    return Ok(());
+                }
+
                 match key.code {
                     KeyCode::Char('q') => state.should_quit = true,
                     KeyCode::Char('u') => {
@@ -102,6 +118,13 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         if state.focus == Focus::Repositories {
                             state.action = Some(UiAction::GarbageCollect);
                             state.should_quit = true;
+                        }
+                    }
+                    KeyCode::Char('v') => {
+                        if state.focus == Focus::Details {
+                            state.diff_modal_open = true;
+                            state.diff_lines = None;
+                            state.diff_scroll = 0;
                         }
                     }
                     KeyCode::Up => match state.focus {

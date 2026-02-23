@@ -48,6 +48,9 @@ pub struct AppState {
     pub loader_tick: usize,
     pub update_available: Option<String>,
     pub is_updating: bool,
+    pub diff_modal_open: bool,
+    pub diff_lines: Option<Vec<String>>,
+    pub diff_scroll: u16,
 }
 
 impl AppState {
@@ -79,6 +82,9 @@ impl AppState {
             loader_tick: 0,
             update_available: None,
             is_updating: false,
+            diff_modal_open: false,
+            diff_lines: None,
+            diff_scroll: 0,
         }
     }
 }

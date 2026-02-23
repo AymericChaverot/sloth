@@ -144,3 +144,39 @@ pub fn get_git_graph(path: &Path) -> Result<Vec<String>, GitError> {
         _ => Ok(Vec::new()),
     }
 }
+
+pub fn get_branch_diff(path: &Path, diff_target: &str) -> Result<Vec<String>, GitError> {
+    let output = Command::new("git")
+        .args(["diff", "--color=always", diff_target])
+        .current_dir(path)
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            Ok(stdout.lines().map(|s| s.to_string()).collect())
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
+pub fn get_stash_diff(path: &Path, stash_index: usize) -> Result<Vec<String>, GitError> {
+    let output = Command::new("git")
+        .args([
+            "stash",
+            "show",
+            "-p",
+            "--color=always",
+            &format!("stash@{{{}}}", stash_index),
+        ])
+        .current_dir(path)
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            Ok(stdout.lines().map(|s| s.to_string()).collect())
+        }
+        _ => Ok(Vec::new()),
+    }
+}
