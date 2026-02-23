@@ -30,15 +30,32 @@
 
 ## Installation
 
-### Prerequisites
+### Quick Install (recommended)
 
-- [Rust](https://www.rust-lang.org/tools/install) 1.85+ (edition 2024)
-- `git` available on your `PATH`
+**Linux / macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/AymericChaverot/sloth/main/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/AymericChaverot/sloth/main/install.ps1 | iex
+```
+
+This will download the latest release, install the binary to the correct location, and add it to your `PATH`.
+
+| OS | Install location |
+|---|---|
+| Linux | `~/.local/bin/sloth` |
+| macOS | `~/.local/bin/sloth` |
+| Windows | `%LOCALAPPDATA%\Programs\sloth\sloth.exe` |
 
 ### Build from source
 
+Prerequisites: [Rust](https://www.rust-lang.org/tools/install) 1.85+ and `git` on your `PATH`.
+
 ```bash
-git clone https://github.com/your-username/sloth.git
+git clone https://github.com/AymericChaverot/sloth.git
 cd sloth
 cargo build --release
 ```
