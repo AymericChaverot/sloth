@@ -112,12 +112,15 @@ pub fn run_tui(
             ];
             let max_diag = (art_lines.len() + 28) as f64; // row + max col
 
-            // HSL to RGB conversion (s=1.0, l=0.5 for vivid rainbow)
+            // HSL to RGB conversion (s=0.8, l=0.55 for balanced rainbow)
             let hsl_to_rgb = |h: f64| -> (u8, u8, u8) {
-                let c = 1.0_f64;
+                let s = 0.8_f64;
+                let l = 0.55_f64;
+                let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
                 let h2 = h / 60.0;
                 let x = c * (1.0 - ((h2 % 2.0) - 1.0).abs());
-                let (r, g, b) = match h2 as u32 {
+                let m = l - c / 2.0;
+                let (r1, g1, b1) = match h2 as u32 {
                     0 => (c, x, 0.0),
                     1 => (x, c, 0.0),
                     2 => (0.0, c, x),
@@ -125,7 +128,7 @@ pub fn run_tui(
                     4 => (x, 0.0, c),
                     _ => (c, 0.0, x),
                 };
-                ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+                (((r1 + m) * 255.0) as u8, ((g1 + m) * 255.0) as u8, ((b1 + m) * 255.0) as u8)
             };
 
             let mut header_lines: Vec<Line> = Vec::new();
