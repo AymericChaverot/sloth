@@ -7,6 +7,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
 use std::io::{self, stdout};
@@ -101,15 +102,54 @@ pub fn run_tui(
                 .split(f.area());
 
             let version = env!("CARGO_PKG_VERSION");
-            let ascii_art = format!(r#"
-   _____ __      __  __  
-  / ___// /___  / /_/ /_ 
-  \__ \/ / __ \/ __/ __ \
- ___/ / / /_/ / /_/ / / /
-/____/_/\____/\__/_/ /_/  v{} - The git repository cleaner tool
-"#, version);
-            let header = Paragraph::new(ascii_art)
-                .style(Style::default().fg(Color::Cyan))
+            let art_lines = [
+                "  ▄▄▄▄▄  ▄▄                ",
+                " ██▀▀▀▀█▄ ██       █▄ █▄   ",
+                " ▀██▄  ▄▀ ██      ▄██▄██   ",
+                "   ▀██▄▄  ██ ▄███▄ ██ ████▄",
+                " ▄   ▀██▄ ██ ██ ██ ██ ██ ██",
+                " ▀██████▀▄██▄▀███▀▄██▄██ ██",
+            ];
+            let max_diag = (art_lines.len() + 28) as f64; // row + max col
+
+            // HSL to RGB conversion (s=1.0, l=0.5 for vivid rainbow)
+            let hsl_to_rgb = |h: f64| -> (u8, u8, u8) {
+                let c = 1.0_f64;
+                let h2 = h / 60.0;
+                let x = c * (1.0 - ((h2 % 2.0) - 1.0).abs());
+                let (r, g, b) = match h2 as u32 {
+                    0 => (c, x, 0.0),
+                    1 => (x, c, 0.0),
+                    2 => (0.0, c, x),
+                    3 => (0.0, x, c),
+                    4 => (x, 0.0, c),
+                    _ => (c, 0.0, x),
+                };
+                ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+            };
+
+            let mut header_lines: Vec<Line> = Vec::new();
+            header_lines.push(Line::from("")); // top padding
+            for (row, art) in art_lines.iter().enumerate() {
+                let mut spans: Vec<Span> = Vec::new();
+                for (col, ch) in art.chars().enumerate() {
+                    let diag = (row + col) as f64;
+                    let hue = (diag / max_diag) * 300.0; // 0° (red) → 300° (magenta)
+                    let (r, g, b) = hsl_to_rgb(hue);
+                    spans.push(Span::styled(
+                        ch.to_string(),
+                        Style::default().fg(Color::Rgb(r, g, b)),
+                    ));
+                }
+                if row == art_lines.len() - 1 {
+                    spans.push(Span::styled(
+                        format!(" v{} - The git repository cleaner tool", version),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
+                header_lines.push(Line::from(spans));
+            }
+            let header = Paragraph::new(header_lines)
                 .alignment(ratatui::layout::Alignment::Left);
             f.render_widget(header, chunks[0]);
 
