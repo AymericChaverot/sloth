@@ -64,6 +64,7 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
                         diff_insertions: 0,
                         diff_deletions: 0,
                         last_commit_date,
+                        is_merged: false,
                     });
                 }
             }
@@ -78,6 +79,23 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
     } else {
         None
     };
+
+    let mut merged_branches = std::collections::HashSet::new();
+    if let Some(ref target) = main_branch {
+        if let Ok(output) = Command::new("git")
+            .args(["branch", "--merged", target])
+            .current_dir(path)
+            .output()
+        {
+            if output.status.success() {
+                let out_str = String::from_utf8_lossy(&output.stdout);
+                for line in out_str.lines() {
+                    let b = line.replace("* ", "").trim().to_string();
+                    merged_branches.insert(b);
+                }
+            }
+        }
+    }
 
     for branch in branches.iter_mut() {
         if branch.name == "main" || branch.name == "master" {
@@ -97,6 +115,7 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
         branch.behind = stats.1;
         branch.diff_insertions = stats.2;
         branch.diff_deletions = stats.3;
+        branch.is_merged = merged_branches.contains(&branch.name);
     }
 
     if let Ok(output) = Command::new("git")
