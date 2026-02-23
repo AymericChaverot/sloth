@@ -12,178 +12,186 @@ use ratatui::{
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut detail_items: Vec<ListItem> = Vec::new();
 
+    let is_repo_analyzed = state
+        .repositories
+        .get(state.repo_index)
+        .map_or(false, |r| r.analyzed);
+
     if let Some(repo) = state.repositories.get(state.repo_index) {
-        detail_items
-            .push(ListItem::new("--- Branches ---").style(Style::default().fg(Color::Blue)));
+        if repo.analyzed {
+            detail_items
+                .push(ListItem::new("--- Branches ---").style(Style::default().fg(Color::Blue)));
 
-        let selected_b = state.selected_branches.entry(state.repo_index).or_default();
-        for (b_idx, branch) in repo.branches.iter().enumerate() {
-            let is_active = if b_idx == state.detail_index {
-                ">> "
-            } else {
-                "   "
-            };
-            let checkbox = if selected_b.contains(&branch.name) {
-                "[x] "
-            } else {
-                "[ ] "
-            };
-            let dead_marker = if branch.is_dead { " (DEAD)" } else { "" };
+            let selected_b = state.selected_branches.entry(state.repo_index).or_default();
+            for (b_idx, branch) in repo.branches.iter().enumerate() {
+                let is_active = if b_idx == state.detail_index {
+                    ">> "
+                } else {
+                    "   "
+                };
+                let checkbox = if selected_b.contains(&branch.name) {
+                    "[x] "
+                } else {
+                    "[ ] "
+                };
+                let dead_marker = if branch.is_dead { " (DEAD)" } else { "" };
 
-            let is_selected = b_idx == state.detail_index && state.focus == Focus::Details;
+                let is_selected = b_idx == state.detail_index && state.focus == Focus::Details;
 
-            let mut spans = vec![
-                Span::styled(
-                    is_active,
-                    if is_selected {
-                        Style::default().fg(Color::Yellow)
+                let mut spans = vec![
+                    Span::styled(
+                        is_active,
+                        if is_selected {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                    Span::styled(
+                        checkbox,
+                        if is_selected {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                    Span::styled(
+                        branch.name.clone() + dead_marker,
+                        if branch.is_dead {
+                            Style::default().fg(Color::Red)
+                        } else if is_selected {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                ];
+
+                let display_stats = if branch.is_dead || branch.upstream.is_some() {
+                    if !branch.is_dead
+                        && branch.ahead == 0
+                        && branch.behind == 0
+                        && branch.diff_insertions == 0
+                        && branch.diff_deletions == 0
+                    {
+                        spans.push(Span::styled(
+                            " (Up to date with upstream)",
+                            Style::default().fg(Color::DarkGray),
+                        ));
+                        false
                     } else {
-                        Style::default()
-                    },
-                ),
-                Span::styled(
-                    checkbox,
-                    if is_selected {
-                        Style::default().fg(Color::Yellow)
-                    } else {
-                        Style::default()
-                    },
-                ),
-                Span::styled(
-                    branch.name.clone() + dead_marker,
-                    if branch.is_dead {
-                        Style::default().fg(Color::Red)
-                    } else if is_selected {
-                        Style::default().fg(Color::Yellow)
-                    } else {
-                        Style::default()
-                    },
-                ),
-            ];
-
-            let display_stats = if branch.is_dead || branch.upstream.is_some() {
-                if !branch.is_dead
-                    && branch.ahead == 0
-                    && branch.behind == 0
-                    && branch.diff_insertions == 0
-                    && branch.diff_deletions == 0
-                {
+                        true
+                    }
+                } else {
                     spans.push(Span::styled(
-                        " (Up to date with upstream)",
+                        " (Local)",
                         Style::default().fg(Color::DarkGray),
                     ));
                     false
-                } else {
-                    true
-                }
-            } else {
-                spans.push(Span::styled(
-                    " (Local)",
-                    Style::default().fg(Color::DarkGray),
-                ));
-                false
-            };
+                };
 
-            if display_stats {
-                spans.push(Span::raw(" "));
-                if branch.ahead > 0 {
-                    spans.push(Span::styled(
-                        format!("\u{2191}{}", branch.ahead),
-                        Style::default().fg(Color::Green),
-                    ));
-                } else {
-                    spans.push(Span::styled(
-                        format!("\u{2191}0"),
-                        Style::default().fg(Color::DarkGray),
-                    ));
+                if display_stats {
+                    spans.push(Span::raw(" "));
+                    if branch.ahead > 0 {
+                        spans.push(Span::styled(
+                            format!("\u{2191}{}", branch.ahead),
+                            Style::default().fg(Color::Green),
+                        ));
+                    } else {
+                        spans.push(Span::styled(
+                            format!("\u{2191}0"),
+                            Style::default().fg(Color::DarkGray),
+                        ));
+                    }
+                    spans.push(Span::raw(" "));
+                    if branch.behind > 0 {
+                        spans.push(Span::styled(
+                            format!("\u{2193}{}", branch.behind),
+                            Style::default().fg(Color::Red),
+                        ));
+                    } else {
+                        spans.push(Span::styled(
+                            format!("\u{2193}0"),
+                            Style::default().fg(Color::DarkGray),
+                        ));
+                    }
+                    spans.push(Span::raw(" ("));
+                    if branch.diff_insertions > 0 {
+                        spans.push(Span::styled(
+                            format!("+{}", branch.diff_insertions),
+                            Style::default().fg(Color::Green),
+                        ));
+                    } else {
+                        spans.push(Span::styled(
+                            format!("+0"),
+                            Style::default().fg(Color::DarkGray),
+                        ));
+                    }
+                    spans.push(Span::raw(" "));
+                    if branch.diff_deletions > 0 {
+                        spans.push(Span::styled(
+                            format!("-{}", branch.diff_deletions),
+                            Style::default().fg(Color::Red),
+                        ));
+                    } else {
+                        spans.push(Span::styled(
+                            format!("-0"),
+                            Style::default().fg(Color::DarkGray),
+                        ));
+                    }
+                    spans.push(Span::raw(")"));
                 }
-                spans.push(Span::raw(" "));
-                if branch.behind > 0 {
-                    spans.push(Span::styled(
-                        format!("\u{2193}{}", branch.behind),
-                        Style::default().fg(Color::Red),
-                    ));
-                } else {
-                    spans.push(Span::styled(
-                        format!("\u{2193}0"),
-                        Style::default().fg(Color::DarkGray),
-                    ));
-                }
-                spans.push(Span::raw(" ("));
-                if branch.diff_insertions > 0 {
-                    spans.push(Span::styled(
-                        format!("+{}", branch.diff_insertions),
-                        Style::default().fg(Color::Green),
-                    ));
-                } else {
-                    spans.push(Span::styled(
-                        format!("+0"),
-                        Style::default().fg(Color::DarkGray),
-                    ));
-                }
-                spans.push(Span::raw(" "));
-                if branch.diff_deletions > 0 {
-                    spans.push(Span::styled(
-                        format!("-{}", branch.diff_deletions),
-                        Style::default().fg(Color::Red),
-                    ));
-                } else {
-                    spans.push(Span::styled(
-                        format!("-0"),
-                        Style::default().fg(Color::DarkGray),
-                    ));
-                }
-                spans.push(Span::raw(")"));
+
+                detail_items.push(ListItem::new(Line::from(spans)));
             }
 
-            detail_items.push(ListItem::new(Line::from(spans)));
-        }
+            detail_items
+                .push(ListItem::new("--- Stashes ---").style(Style::default().fg(Color::Blue)));
+            let selected_s = state.selected_stashes.entry(state.repo_index).or_default();
+            for (s_idx, stash) in repo.stashes.iter().enumerate() {
+                let actual_idx = repo.branches.len() + s_idx;
+                let is_active = if actual_idx == state.detail_index {
+                    ">> "
+                } else {
+                    "   "
+                };
+                let checkbox = if selected_s.contains(&stash.index) {
+                    "[x] "
+                } else {
+                    "[ ] "
+                };
 
-        detail_items.push(ListItem::new("--- Stashes ---").style(Style::default().fg(Color::Blue)));
-        let selected_s = state.selected_stashes.entry(state.repo_index).or_default();
-        for (s_idx, stash) in repo.stashes.iter().enumerate() {
-            let actual_idx = repo.branches.len() + s_idx;
-            let is_active = if actual_idx == state.detail_index {
-                ">> "
-            } else {
-                "   "
-            };
-            let checkbox = if selected_s.contains(&stash.index) {
-                "[x] "
-            } else {
-                "[ ] "
-            };
+                let is_selected = actual_idx == state.detail_index && state.focus == Focus::Details;
 
-            let is_selected = actual_idx == state.detail_index && state.focus == Focus::Details;
+                let spans = vec![
+                    Span::styled(
+                        is_active,
+                        if is_selected {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                    Span::styled(
+                        checkbox,
+                        if is_selected {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                    Span::styled(
+                        stash.message.clone(),
+                        if is_selected {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                ];
 
-            let spans = vec![
-                Span::styled(
-                    is_active,
-                    if is_selected {
-                        Style::default().fg(Color::Yellow)
-                    } else {
-                        Style::default()
-                    },
-                ),
-                Span::styled(
-                    checkbox,
-                    if is_selected {
-                        Style::default().fg(Color::Yellow)
-                    } else {
-                        Style::default()
-                    },
-                ),
-                Span::styled(
-                    stash.message.clone(),
-                    if is_selected {
-                        Style::default().fg(Color::Yellow)
-                    } else {
-                        Style::default()
-                    },
-                ),
-            ];
-
-            detail_items.push(ListItem::new(Line::from(spans)));
+                detail_items.push(ListItem::new(Line::from(spans)));
+            }
         }
     }
 
@@ -225,6 +233,16 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         } else {
             "No repositories found.".to_string()
         };
+        let p = Paragraph::new(text)
+            .style(Style::default().fg(Color::DarkGray))
+            .block(detail_block)
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(p, area);
+    } else if !is_repo_analyzed {
+        // Repo found but not yet analyzed — show spinner
+        let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let frame = spinner[(state.loader_tick / 4) % spinner.len()];
+        let text = format!("{} Analyzing repository...", frame);
         let p = Paragraph::new(text)
             .style(Style::default().fg(Color::DarkGray))
             .block(detail_block)

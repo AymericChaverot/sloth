@@ -35,10 +35,27 @@ pub fn run_tui(
         // Pump background tasks
         while let Ok(event) = rx.try_recv() {
             match event {
-                ScannerEvent::RepoFound => state.scanned_count += 1,
+                ScannerEvent::RepoFound(path) => {
+                    state.scanned_count += 1;
+                    state.repositories.push(crate::git::RepoStatus {
+                        path,
+                        remote_url: None,
+                        branches: Vec::new(),
+                        stashes: Vec::new(),
+                        graph_lines: None,
+                        analyzed: false,
+                    });
+                }
                 ScannerEvent::ScanComplete => state.is_scanning = false,
                 ScannerEvent::RepoAnalyzed(repo) => {
-                    state.repositories.push(repo);
+                    // Find and replace the placeholder entry
+                    if let Some(existing) =
+                        state.repositories.iter_mut().find(|r| r.path == repo.path)
+                    {
+                        *existing = repo;
+                    } else {
+                        state.repositories.push(repo);
+                    }
                     state.analyzed_count += 1;
                 }
                 ScannerEvent::AnalysisComplete => state.is_analyzing = false,

@@ -33,8 +33,8 @@ async fn main() -> anyhow::Result<()> {
         // Collect paths
         while let Some(res) = rx_scan.recv().await {
             if let Ok(path) = res {
-                git_repos.push(path);
-                let _ = tx.send(ui::ScannerEvent::RepoFound);
+                git_repos.push(path.clone());
+                let _ = tx.send(ui::ScannerEvent::RepoFound(path));
             }
         }
         let _ = tx.send(ui::ScannerEvent::ScanComplete);

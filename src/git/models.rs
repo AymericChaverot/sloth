@@ -32,4 +32,5 @@ pub struct RepoStatus {
     pub branches: Vec<BranchInfo>,
     pub stashes: Vec<StashInfo>,
     pub graph_lines: Option<Vec<String>>,
+    pub analyzed: bool,
 }

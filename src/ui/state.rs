@@ -1,10 +1,11 @@
 use crate::git::RepoStatus;
 use ratatui::widgets::ListState;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub enum ScannerEvent {
-    RepoFound,
+    RepoFound(PathBuf),
     ScanComplete,
     RepoAnalyzed(RepoStatus),
     AnalysisComplete,

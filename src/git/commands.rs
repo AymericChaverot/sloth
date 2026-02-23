@@ -115,6 +115,7 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
         branches,
         stashes,
         graph_lines: None,
+        analyzed: true,
     })
 }
 
