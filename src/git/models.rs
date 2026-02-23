@@ -28,11 +28,18 @@ pub struct StashInfo {
 }
 
 #[derive(Debug, Clone)]
+pub struct WorktreeInfo {
+    pub path: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct RepoStatus {
     pub path: PathBuf,
     pub remote_url: Option<String>,
     pub branches: Vec<BranchInfo>,
     pub stashes: Vec<StashInfo>,
+    pub worktrees: Vec<WorktreeInfo>,
     pub graph_lines: Option<Vec<String>>,
     pub analyzed: bool,
     pub size_bytes: Option<u64>,

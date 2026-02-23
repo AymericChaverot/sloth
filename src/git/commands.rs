@@ -1,4 +1,4 @@
-use super::models::{BranchInfo, GitError, RepoStatus, StashInfo};
+use super::models::{BranchInfo, GitError, RepoStatus, StashInfo, WorktreeInfo};
 use std::path::Path;
 use std::process::Command;
 
@@ -134,6 +134,40 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
         }
     }
 
+    let mut worktrees = Vec::new();
+    if let Ok(output) = Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(path)
+        .output()
+    {
+        if output.status.success() {
+            let out_str = String::from_utf8_lossy(&output.stdout);
+            let mut current_wt = None;
+            let mut current_branch = None;
+
+            for line in out_str.lines() {
+                if line.starts_with("worktree ") {
+                    if let Some(wt) = current_wt.take() {
+                        worktrees.push(WorktreeInfo {
+                            path: wt,
+                            branch: current_branch.take(),
+                        });
+                    }
+                    current_wt = Some(line.replace("worktree ", "").trim().to_string());
+                } else if line.starts_with("branch ") {
+                    let b = line.replace("branch refs/heads/", "").trim().to_string();
+                    current_branch = Some(b);
+                }
+            }
+            if let Some(wt) = current_wt.take() {
+                worktrees.push(WorktreeInfo {
+                    path: wt,
+                    branch: current_branch.take(),
+                });
+            }
+        }
+    }
+
     let size_bytes = super::stats::get_repo_size(&path.join(".git")).ok();
 
     Ok(RepoStatus {
@@ -141,6 +175,7 @@ pub fn analyze_repository(path: &Path) -> Result<RepoStatus, GitError> {
         remote_url,
         branches,
         stashes,
+        worktrees,
         graph_lines: None,
         analyzed: true,
         size_bytes,

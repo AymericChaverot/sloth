@@ -21,7 +21,7 @@ pub use state::{AppState, ScannerEvent, UiAction};
 pub fn run_tui(
     mut state: AppState,
     rx: Receiver<ScannerEvent>,
-) -> io::Result<Option<(Vec<PathBuf>, UiAction, Vec<String>, Vec<usize>)>> {
+) -> io::Result<Option<(Vec<PathBuf>, UiAction, Vec<String>, Vec<usize>, Vec<String>)>> {
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
 
@@ -41,6 +41,7 @@ pub fn run_tui(
                         remote_url: None,
                         branches: Vec::new(),
                         stashes: Vec::new(),
+                        worktrees: Vec::new(),
                         graph_lines: None,
                         analyzed: false,
                         size_bytes: None,
@@ -247,7 +248,13 @@ pub fn run_tui(
             .unwrap_or_default()
             .into_iter()
             .collect();
-        Ok(Some((paths, action, branches, stashes)))
+        let worktrees = state
+            .selected_worktrees
+            .remove(&state.repo_index)
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        Ok(Some((paths, action, branches, stashes, worktrees)))
     } else {
         Ok(None)
     }

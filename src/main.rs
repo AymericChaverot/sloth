@@ -65,14 +65,18 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new();
 
     // Start TUI
-    if let Some((paths, action, branches, stashes)) = ui::run_tui(state, rx)? {
+    if let Some((paths, action, branches, stashes, worktrees)) = ui::run_tui(state, rx)? {
         let engine_action = match action {
             ui::UiAction::CleanRepo => {
-                if branches.is_empty() && stashes.is_empty() {
-                    println!("No branches or stashes selected for deletion.");
+                if branches.is_empty() && stashes.is_empty() && worktrees.is_empty() {
+                    println!("No branches, stashes, or worktrees selected for deletion.");
                     return Ok(());
                 }
-                engine::Action::CleanRepo { branches, stashes }
+                engine::Action::CleanRepo {
+                    branches,
+                    stashes,
+                    worktrees,
+                }
             }
             ui::UiAction::PruneRemotes => engine::Action::PruneRemotes,
             ui::UiAction::GarbageCollect => engine::Action::GarbageCollect,

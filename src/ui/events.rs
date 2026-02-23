@@ -109,9 +109,9 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                                     set.insert(b_name);
                                 }
                             } else {
-                                // It's a stash
                                 let s_idx = state.detail_index.saturating_sub(b_len);
                                 if s_idx < repo.stashes.len() {
+                                    // It's a stash
                                     let s_id = repo.stashes[s_idx].index;
                                     let set =
                                         state.selected_stashes.entry(state.repo_index).or_default();
@@ -119,6 +119,21 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                                         set.remove(&s_id);
                                     } else {
                                         set.insert(s_id);
+                                    }
+                                } else {
+                                    // It's a worktree
+                                    let w_idx = s_idx.saturating_sub(repo.stashes.len());
+                                    if w_idx < repo.worktrees.len() {
+                                        let w_path = repo.worktrees[w_idx].path.clone();
+                                        let set = state
+                                            .selected_worktrees
+                                            .entry(state.repo_index)
+                                            .or_default();
+                                        if set.contains(&w_path) {
+                                            set.remove(&w_path);
+                                        } else {
+                                            set.insert(w_path);
+                                        }
                                     }
                                 }
                             }

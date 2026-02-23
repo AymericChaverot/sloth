@@ -225,6 +225,74 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
                 detail_items.push(ListItem::new(Line::from(spans)));
             }
+
+            detail_items.push(
+                ListItem::new("--- Worktrees ---").style(Style::default().fg(theme.secondary)),
+            );
+            let selected_wt = state
+                .selected_worktrees
+                .entry(state.repo_index)
+                .or_default();
+            for (wt_idx, wt) in repo.worktrees.iter().enumerate() {
+                if state.is_searching && !state.search_query.is_empty() {
+                    if !wt
+                        .path
+                        .to_lowercase()
+                        .contains(&state.search_query.to_lowercase())
+                    {
+                        continue;
+                    }
+                }
+
+                let actual_idx = repo.branches.len() + repo.stashes.len() + wt_idx;
+                let is_active = if actual_idx == state.detail_index {
+                    ">> "
+                } else {
+                    "   "
+                };
+                let checkbox = if selected_wt.contains(&wt.path) {
+                    "[x] "
+                } else {
+                    "[ ] "
+                };
+                let is_selected = actual_idx == state.detail_index && state.focus == Focus::Details;
+
+                let mut spans = vec![
+                    Span::styled(
+                        is_active,
+                        if is_selected {
+                            Style::default().fg(theme.primary)
+                        } else {
+                            Style::default().fg(theme.text_normal)
+                        },
+                    ),
+                    Span::styled(
+                        checkbox,
+                        if is_selected {
+                            Style::default().fg(theme.primary)
+                        } else {
+                            Style::default().fg(theme.text_normal)
+                        },
+                    ),
+                    Span::styled(
+                        wt.path.clone(),
+                        if is_selected {
+                            Style::default().fg(theme.primary)
+                        } else {
+                            Style::default().fg(theme.text_normal)
+                        },
+                    ),
+                ];
+
+                if let Some(b) = &wt.branch {
+                    spans.push(Span::styled(
+                        format!(" [{}]", b),
+                        Style::default().fg(theme.secondary),
+                    ));
+                }
+
+                detail_items.push(ListItem::new(Line::from(spans)));
+            }
         }
     }
 
@@ -236,7 +304,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::raw("Details")
         }
     } else {
-        Span::raw("Details (Branches & Stashes)")
+        Span::raw("Details (Branches, Stashes, Worktrees)")
     }];
 
     if let Some(repo) = state.repositories.get(state.repo_index) {

@@ -14,6 +14,7 @@ pub enum Action {
     CleanRepo {
         branches: Vec<String>,
         stashes: Vec<usize>,
+        worktrees: Vec<String>,
     },
     PruneRemotes,
     GarbageCollect,
@@ -77,11 +78,16 @@ pub async fn execute_batch(
 
 fn format_action(action: &Action) -> String {
     match action {
-        Action::CleanRepo { branches, stashes } => {
+        Action::CleanRepo {
+            branches,
+            stashes,
+            worktrees,
+        } => {
             format!(
-                "Delete {} branches, drop {} stashes",
+                "Delete {} branches, drop {} stashes, remove {} worktrees",
                 branches.len(),
-                stashes.len()
+                stashes.len(),
+                worktrees.len()
             )
         }
         Action::PruneRemotes => "Prune dead remote tracking branches".to_string(),
@@ -92,7 +98,11 @@ fn format_action(action: &Action) -> String {
 
 async fn execute_action(path: &Path, action: &Action) -> Result<String, EngineError> {
     match action {
-        Action::CleanRepo { branches, stashes } => {
+        Action::CleanRepo {
+            branches,
+            stashes,
+            worktrees,
+        } => {
             let mut msgs = Vec::new();
 
             for b in branches {
