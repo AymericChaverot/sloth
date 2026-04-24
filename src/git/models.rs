@@ -1,0 +1,55 @@
+use std::path::PathBuf;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum GitError {
+    #[error("Failed to open repository: {0}")]
+    OpenError(Box<gix::open::Error>),
+}
+
+impl From<gix::open::Error> for GitError {
+    fn from(e: gix::open::Error) -> Self {
+        GitError::OpenError(Box::new(e))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchInfo {
+    pub name: String,
+    pub is_active: bool,
+    pub is_dead: bool,
+    pub upstream: Option<String>,
+    pub ahead: usize,
+    pub behind: usize,
+    pub diff_insertions: usize,
+    pub diff_deletions: usize,
+    pub last_commit_date: Option<String>,
+    pub is_merged: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct StashInfo {
+    pub index: usize,
+    pub message: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct WorktreeInfo {
+    pub path: String,
+    pub branch: Option<String>,
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RepoStatus {
+    pub path: PathBuf,
+    pub remote_url: Option<String>,
+    pub branches: Vec<BranchInfo>,
+    pub stashes: Vec<StashInfo>,
+    pub worktrees: Vec<WorktreeInfo>,
+    pub graph_lines: Option<Vec<String>>,
+    pub analyzed: bool,
+    pub size_bytes: Option<u64>,
+    pub untracked_size_bytes: Option<u64>,
+    pub size_finalized: bool,
+}
