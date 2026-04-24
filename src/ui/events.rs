@@ -67,10 +67,8 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
 
         match key.code {
             KeyCode::Char('q') => state.should_quit = true,
-            KeyCode::Char('u') => {
-                if state.update_available.is_some() && !state.is_updating {
-                    state.is_updating = true;
-                }
+            KeyCode::Char('u') if state.update_available.is_some() && !state.is_updating => {
+                state.is_updating = true;
             }
             KeyCode::Esc => {
                 if state.focus == Focus::Details {
@@ -84,11 +82,8 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                     state.focus = Focus::Details;
                 }
             }
-            KeyCode::Char('f') | KeyCode::Char('m') => {
-                // support 'm' logic from earlier requests
-                if state.focus == Focus::GitGraph {
-                    state.graph_maximized = !state.graph_maximized;
-                }
+            KeyCode::Char('f') | KeyCode::Char('m') if state.focus == Focus::GitGraph => {
+                state.graph_maximized = !state.graph_maximized;
             }
             KeyCode::Char('g') => {
                 state.show_graph = !state.show_graph;
@@ -172,56 +167,48 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                     }
                 }
             }
-            KeyCode::Char('a') => {
-                if state.focus == Focus::Details && !state.repositories.is_empty() {
-                    let repo = &state.repositories[state.repo_index];
-                    let set = state.selected_branches.entry(state.repo_index).or_default();
-                    for branch in &repo.branches {
-                        if branch.is_dead || branch.is_merged {
-                            set.insert(branch.name.clone());
-                        }
-                    }
-                }
-            }
-            KeyCode::Char('A') => {
-                if state.focus == Focus::Details && !state.repositories.is_empty() {
-                    let repo = &state.repositories[state.repo_index];
-                    let set = state.selected_branches.entry(state.repo_index).or_default();
-                    for branch in &repo.branches {
+            KeyCode::Char('a')
+                if state.focus == Focus::Details && !state.repositories.is_empty() =>
+            {
+                let repo = &state.repositories[state.repo_index];
+                let set = state.selected_branches.entry(state.repo_index).or_default();
+                for branch in &repo.branches {
+                    if branch.is_dead || branch.is_merged {
                         set.insert(branch.name.clone());
                     }
                 }
             }
-            KeyCode::Enter => {
-                if state.focus == Focus::Details {
-                    state.pending_action = Some(UiAction::CleanRepo);
+            KeyCode::Char('A')
+                if state.focus == Focus::Details && !state.repositories.is_empty() =>
+            {
+                let repo = &state.repositories[state.repo_index];
+                let set = state.selected_branches.entry(state.repo_index).or_default();
+                for branch in &repo.branches {
+                    set.insert(branch.name.clone());
                 }
             }
-            KeyCode::Char('p') => {
-                if state.focus == Focus::Repositories {
-                    state.pending_action = Some(UiAction::PruneRemotes);
-                }
+            KeyCode::Enter if state.focus == Focus::Details => {
+                state.pending_action = Some(UiAction::CleanRepo);
             }
-            KeyCode::Char('c') => {
-                if state.focus == Focus::Repositories {
-                    state.pending_action = Some(UiAction::GarbageCollect);
-                }
+            KeyCode::Char('p') if state.focus == Focus::Repositories => {
+                state.pending_action = Some(UiAction::PruneRemotes);
+            }
+            KeyCode::Char('c') if state.focus == Focus::Repositories => {
+                state.pending_action = Some(UiAction::GarbageCollect);
             }
             KeyCode::Char('t') => {
                 state.theme_index = (state.theme_index + 1) % crate::ui::theme::THEMES.len();
                 crate::ui::theme::save_theme(state.theme_index);
             }
-            KeyCode::Char('v') => {
-                if state.focus == Focus::Details {
-                    state.diff_modal_open = true;
-                    state.diff_lines = None;
-                    state.diff_scroll = 0;
-                }
+            KeyCode::Char('v') if state.focus == Focus::Details => {
+                state.diff_modal_open = true;
+                state.diff_lines = None;
+                state.diff_scroll = 0;
             }
-            KeyCode::Char('X') => {
-                if state.focus == Focus::Repositories && !state.repositories.is_empty() {
-                    state.pending_action = Some(UiAction::DeepClean);
-                }
+            KeyCode::Char('X')
+                if state.focus == Focus::Repositories && !state.repositories.is_empty() =>
+            {
+                state.pending_action = Some(UiAction::DeepClean);
             }
             KeyCode::Char('d') => {
                 if state.focus == Focus::Dashboard {
