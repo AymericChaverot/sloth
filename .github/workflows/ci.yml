@@ -35,7 +35,7 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy --all-targets -- -D warnings
 
   test:
     name: Test (${{ matrix.os }})

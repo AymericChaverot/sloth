@@ -153,7 +153,7 @@ pub mod mock {
             {
                 match res {
                     Ok(s) => Ok(s.clone()),
-                    Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e.clone())),
+                    Err(e) => Err(std::io::Error::other(e.clone())),
                 }
             } else {
                 println!("UNMOCKED COMMAND: path={:?}, args={:?}", path, args_vec);
