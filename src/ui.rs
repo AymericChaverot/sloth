@@ -9,7 +9,7 @@ use ratatui::{
 };
 use std::io::{self, stdout};
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, Sender};
 
 pub mod components;
 pub mod events;
@@ -22,7 +22,11 @@ pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦"
 
 type TuiResult = io::Result<Option<(Vec<PathBuf>, UiAction, Vec<String>, Vec<usize>, Vec<String>)>>;
 
-pub fn run_tui(mut state: AppState, rx: Receiver<ScannerEvent>) -> TuiResult {
+pub fn run_tui(
+    mut state: AppState,
+    rx: Receiver<ScannerEvent>,
+    tx: Sender<ScannerEvent>,
+) -> TuiResult {
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
 
@@ -87,6 +91,10 @@ pub fn run_tui(mut state: AppState, rx: Receiver<ScannerEvent>) -> TuiResult {
                 ScannerEvent::UpdateAvailable(version) => {
                     state.update_available = Some(version);
                 }
+                ScannerEvent::DeepCleanPreview(lines) => {
+                    state.confirm_preview_lines = Some(lines);
+                    state.preview_loading = false;
+                }
             }
         }
 
@@ -111,12 +119,12 @@ pub fn run_tui(mut state: AppState, rx: Receiver<ScannerEvent>) -> TuiResult {
             }
         }
 
-        // Fetch deep clean preview when pending
+        // Kick off deep clean preview in background (non-blocking)
         if matches!(state.pending_action, Some(UiAction::DeepClean))
             && state.confirm_preview_lines.is_none()
+            && !state.preview_loading
         {
-            use crate::sys::GitExecutor as _;
-            let sys = crate::sys::RealSystem;
+            state.preview_loading = true;
             let paths: Vec<PathBuf> = if state.selected_repositories.is_empty() {
                 state
                     .repositories
@@ -130,26 +138,31 @@ pub fn run_tui(mut state: AppState, rx: Receiver<ScannerEvent>) -> TuiResult {
                     .filter_map(|&i| state.repositories.get(i).map(|r| r.path.clone()))
                     .collect()
             };
-            let mut preview: Vec<String> = Vec::new();
-            for path in &paths {
-                let label = path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
-                match sys.run_git_command(path, &["clean", "-nxdff", "--exclude=.git"]) {
-                    Ok(out) => {
-                        for line in out.lines() {
-                            preview.push(format!("[{}] {}", label, line));
+            let tx_preview = tx.clone();
+            std::thread::spawn(move || {
+                use crate::sys::GitExecutor as _;
+                let sys = crate::sys::RealSystem;
+                let mut preview: Vec<String> = Vec::new();
+                for path in &paths {
+                    let label = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    match sys.run_git_command(path, &["clean", "-nxdff", "--exclude=.git"]) {
+                        Ok(out) => {
+                            for line in out.lines() {
+                                preview.push(format!("[{}] {}", label, line));
+                            }
                         }
+                        Err(e) => preview.push(format!("[{}] error: {}", label, e)),
                     }
-                    Err(e) => preview.push(format!("[{}] error: {}", label, e)),
                 }
-            }
-            if preview.is_empty() {
-                preview.push("(nothing to clean)".to_string());
-            }
-            state.confirm_preview_lines = Some(preview);
+                if preview.is_empty() {
+                    preview.push("(nothing to clean)".to_string());
+                }
+                let _ = tx_preview.send(ScannerEvent::DeepCleanPreview(preview));
+            });
         }
 
         // Fetch diff if modal is opened and lines are empty

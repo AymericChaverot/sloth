@@ -24,10 +24,12 @@ async fn main() -> anyhow::Result<()> {
     let (tx, rx) = std::sync::mpsc::channel();
     let path_clone = args.path.clone();
 
-    // Clone sender for the update checker before moving into scanner task
+    let tx_scanner = tx.clone();
     let tx_update = tx.clone();
+    let tx_ui = tx.clone();
 
     tokio::spawn(async move {
+        let tx = tx_scanner;
         let mut rx_scan = scanner::scan_for_repositories(&path_clone);
         let mut git_repos = Vec::new();
 
@@ -135,7 +137,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState::new();
 
-    if let Some((paths, action, branches, stashes, worktrees)) = ui::run_tui(state, rx)? {
+    if let Some((paths, action, branches, stashes, worktrees)) = ui::run_tui(state, rx, tx_ui)? {
         let sys = crate::sys::RealSystem;
         let mut size_before = 0;
         for path in &paths {

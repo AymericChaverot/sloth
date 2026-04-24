@@ -20,6 +20,7 @@ pub enum ScannerEvent {
     },
     AnalysisComplete,
     UpdateAvailable(String),
+    DeepCleanPreview(Vec<String>),
 }
 
 #[derive(PartialEq, Debug)]
@@ -70,6 +71,7 @@ pub struct AppState {
     pub search_query: String,
     pub pending_action: Option<UiAction>,
     pub confirm_preview_lines: Option<Vec<String>>,
+    pub preview_loading: bool,
 }
 
 impl AppState {
@@ -111,6 +113,7 @@ impl AppState {
             search_query: String::new(),
             pending_action: None,
             confirm_preview_lines: None,
+            preview_loading: false,
         }
     }
 }

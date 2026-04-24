@@ -133,10 +133,14 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     if let UiAction::DeepClean = pending {
         match &state.confirm_preview_lines {
             None => {
-                lines.push(Line::from(Span::styled(
-                    "Loading preview...",
-                    Style::default().fg(theme.text_dimmed),
-                )));
+                let spinner = crate::ui::SPINNER[state.loader_tick % crate::ui::SPINNER.len()];
+                lines.push(Line::from(vec![
+                    Span::styled(format!("{} ", spinner), Style::default().fg(theme.primary)),
+                    Span::styled(
+                        "Computing preview...",
+                        Style::default().fg(theme.text_dimmed),
+                    ),
+                ]));
             }
             Some(preview) => {
                 lines.push(Line::from(Span::styled(
