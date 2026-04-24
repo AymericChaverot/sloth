@@ -8,21 +8,6 @@ use ratatui::{
     },
 };
 
-fn format_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{} KB", bytes / KB)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let theme = crate::ui::theme::get_theme(state.theme_index);
 
@@ -67,7 +52,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         });
 
     if state.is_scanning && state.repositories.is_empty() {
-        let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let spinner = crate::ui::SPINNER;
         let frame = spinner[(state.loader_tick / 4) % spinner.len()];
         let p = Paragraph::new(format!("{} Scanning directory structure...", frame))
             .style(Style::default().fg(theme.text_dimmed))
@@ -112,19 +97,27 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     ),
                     ratatui::text::Span::raw(repo.path.display().to_string()),
                 ];
-                if let Some(size) = repo.size_bytes {
-                    let size_str = format_size(size);
-                    content_spans.push(ratatui::text::Span::styled(
-                        format!(" [{}]", size_str),
-                        Style::default().fg(theme.text_dimmed),
-                    ));
-                } else if !repo.analyzed {
-                    let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-                    let frame = spinner[(state.loader_tick / 4) % spinner.len()];
-                    content_spans.push(ratatui::text::Span::styled(
-                        format!(" [{}]", frame),
-                        Style::default().fg(theme.text_dimmed),
-                    ));
+                let spinner = crate::ui::SPINNER;
+                let frame = spinner[(state.loader_tick / 4) % spinner.len()];
+                match (repo.size_bytes, repo.size_finalized) {
+                    (Some(size), true) => {
+                        content_spans.push(ratatui::text::Span::styled(
+                            format!(" [{}]", crate::git::stats::format_size(size)),
+                            Style::default().fg(theme.text_dimmed),
+                        ));
+                    }
+                    (Some(size), false) => {
+                        content_spans.push(ratatui::text::Span::styled(
+                            format!(" [~{} {}]", crate::git::stats::format_size(size), frame),
+                            Style::default().fg(theme.text_dimmed),
+                        ));
+                    }
+                    (None, _) => {
+                        content_spans.push(ratatui::text::Span::styled(
+                            format!(" [{}]", frame),
+                            Style::default().fg(theme.text_dimmed),
+                        ));
+                    }
                 }
 
                 let mut style = Style::default().fg(theme.text_normal);

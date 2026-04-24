@@ -305,6 +305,9 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
     } else {
         let mut recoverable = 0;
+        let mut sel_b = 0usize;
+        let mut sel_s = 0usize;
+        let mut sel_w = 0usize;
         if let Some(repo) = state.repositories.get(state.repo_index) {
             let selected_wt = state
                 .selected_worktrees
@@ -316,15 +319,37 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     recoverable += wt.size_bytes.unwrap_or(0);
                 }
             }
+            sel_b = state
+                .selected_branches
+                .get(&state.repo_index)
+                .map_or(0, |s| s.len());
+            sel_s = state
+                .selected_stashes
+                .get(&state.repo_index)
+                .map_or(0, |s| s.len());
+            sel_w = selected_wt.len();
         }
-        if recoverable > 0 {
-            Span::raw(format!(
-                "Details (Branches, Stashes, Worktrees) [{} recoverable]",
+        let has_selection = sel_b + sel_s + sel_w > 0;
+        let mut label = "Details (Branches, Stashes, Worktrees)".to_string();
+        if has_selection {
+            label.push_str(&format!(
+                " [{} branch(es), {} stash(es), {} worktree(s) selected",
+                sel_b, sel_s, sel_w
+            ));
+            if recoverable > 0 {
+                label.push_str(&format!(
+                    ", {} recoverable",
+                    crate::git::stats::format_size(recoverable)
+                ));
+            }
+            label.push(']');
+        } else if recoverable > 0 {
+            label.push_str(&format!(
+                " [{} recoverable]",
                 crate::git::stats::format_size(recoverable)
-            ))
-        } else {
-            Span::raw("Details (Branches, Stashes, Worktrees)")
+            ));
         }
+        Span::raw(label)
     }];
 
     if let Some(repo) = state.repositories.get(state.repo_index) {
@@ -355,7 +380,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         });
 
     if state.repositories.is_empty() {
-        let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let spinner = crate::ui::SPINNER;
         let frame = spinner[(state.loader_tick / 4) % spinner.len()];
         let text = if state.is_scanning {
             format!("{} Waiting for scan to complete...", frame)
@@ -371,7 +396,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         f.render_widget(p, area);
     } else if !is_repo_analyzed {
         // Repo found but not yet analyzed — show spinner
-        let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let spinner = crate::ui::SPINNER;
         let frame = spinner[(state.loader_tick / 4) % spinner.len()];
         let text = format!("{} Analyzing repository...", frame);
         let p = Paragraph::new(text)
@@ -388,6 +413,9 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             mapped_idx += 1; // +1 for "--- Branches ---"
             if state.detail_index >= repo.branches.len() {
                 mapped_idx += 1; // +1 for "--- Stashes ---"
+            }
+            if state.detail_index >= repo.branches.len() + repo.stashes.len() {
+                mapped_idx += 1; // +1 for "--- Worktrees ---"
             }
         }
         state.detail_state.select(Some(mapped_idx));

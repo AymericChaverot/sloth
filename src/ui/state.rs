@@ -8,6 +8,10 @@ pub enum ScannerEvent {
     RepoFound(PathBuf),
     ScanComplete,
     RepoAnalyzed(RepoStatus),
+    SizePartial {
+        path: PathBuf,
+        size_bytes: u64,
+    },
     SizeComputed {
         path: PathBuf,
         size_bytes: Option<u64>,
@@ -64,6 +68,8 @@ pub struct AppState {
     pub theme_index: usize,
     pub is_searching: bool,
     pub search_query: String,
+    pub pending_action: Option<UiAction>,
+    pub confirm_preview_lines: Option<Vec<String>>,
 }
 
 impl AppState {
@@ -103,6 +109,8 @@ impl AppState {
             theme_index: crate::ui::theme::load_saved_theme(),
             is_searching: false,
             search_query: String::new(),
+            pending_action: None,
+            confirm_preview_lines: None,
         }
     }
 }

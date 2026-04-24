@@ -25,9 +25,10 @@
 | **⚡ Async scanning** | Discovers nested Git repos instantly using parallel filesystem walking |
 | **📊 Branch analytics** | Shows ahead/behind counts, diff stats, merge status, and last commit date |
 | **🌳 Git graph** | Interactive ASCII commit graph with ANSI colors, fullscreen mode, and scrolling |
-| **🔍 Diff modal** | Inline branch and stash diff viewer with syntax-colored output |
+| **🔍 Diff modal** | Inline branch and stash diff viewer with scroll position indicator and Page Up/Down |
 | **🧹 Multi-action cleanup** | Delete branches, drop stashes, remove worktrees, prune remotes, garbage collect, or deep clean |
-| **📦 Disk space tracking** | Progressive `.git` size, untracked file size, and worktree size calculations |
+| **🛡️ Confirmation prompt** | Previews exactly what will be deleted before any destructive action executes |
+| **📦 Disk space tracking** | Live streaming size estimate per repo as files are discovered, then finalized on completion |
 | **📋 Dashboard** | Aggregated overview of all scanned repositories with totals |
 | **🎨 Theme engine** | Switchable color themes with persistence across sessions |
 | **🖥️ Multi-pane layout** | Header → Repositories → Details → Git Graph, navigable with arrow keys |
@@ -40,21 +41,21 @@
 
 **Linux / macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AymericChaverot/sloth/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/AymericChaverot/sloth/main/scripts/install.sh | sh
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/AymericChaverot/sloth/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/AymericChaverot/sloth/main/scripts/install.ps1 | iex
 ```
 
 This will download the latest release, install the binary to the correct location, and add it to your `PATH`.
 
 | OS | Install location |
 |---|---|
-| Linux | `~/.local/bin/sloth` |
-| macOS | `~/.local/bin/sloth` |
-| Windows | `%LOCALAPPDATA%\Programs\sloth\sloth.exe` |
+| Linux | `~/.sloth/bin/sloth` |
+| macOS | `~/.sloth/bin/sloth` |
+| Windows | `%USERPROFILE%\.sloth\bin\sloth.exe` |
 
 ### Build from source
 
@@ -81,7 +82,7 @@ sloth --path ~/projects
 sloth -p ~/projects
 ```
 
-Sloth will recursively discover every Git repository under the specified path, analyze their branches, stashes and worktrees, compute disk usage in the background, then present an interactive TUI.
+Sloth will recursively discover every Git repository under the specified path, analyze their branches, stashes and worktrees, stream disk usage live in the background, then present an interactive TUI.
 
 ## Keyboard Shortcuts
 
@@ -92,6 +93,7 @@ Sloth will recursively discover every Git repository under the specified path, a
 | `q` | Quit |
 | `d` | Toggle Dashboard view |
 | `t` | Cycle color theme |
+| `/` | Search / filter repositories and items |
 | `u` | Update to latest version (when available) |
 
 ### Repository Pane
@@ -99,7 +101,11 @@ Sloth will recursively discover every Git repository under the specified path, a
 | Key | Action |
 |---|---|
 | `↑` / `↓` | Navigate repositories |
-| `→` / `Enter` | Enter details view for the selected repository |
+| `Space` | Select / deselect a repository |
+| `→` | Enter details pane for the focused repository |
+| `p` | Prune dead remote tracking branches (with confirmation) |
+| `c` | Garbage collect (with confirmation) |
+| `X` | Deep clean — remove untracked & ignored files (with confirmation + preview) |
 
 ### Details Pane (Branches, Stashes & Worktrees)
 
@@ -107,18 +113,20 @@ Sloth will recursively discover every Git repository under the specified path, a
 |---|---|
 | `↑` / `↓` | Navigate branches, stashes, and worktrees |
 | `Space` | Toggle selection on an item |
-| `Enter` | Open action menu for the selected repository |
-| `e` | View diff for the highlighted branch or stash |
+| `a` | Smart auto-select dead and merged branches |
+| `A` | Select all branches |
+| `Esc` | Deselect all items in the current repository |
+| `Enter` | Execute CleanRepo (with confirmation) |
+| `v` | View diff for the focused branch or stash |
 | `g` | Toggle the Git Graph pane |
 | `←` | Return to repository list |
 
-### Action Menu
+### Confirmation Modal
 
 | Key | Action |
 |---|---|
-| `↑` / `↓` | Navigate actions (Clean, Prune, GC, Deep Clean) |
-| `Enter` | Execute the selected action |
-| `Esc` | Close menu |
+| `Y` | Confirm and execute the action |
+| `N` / `Esc` | Cancel |
 
 ### Git Graph Pane
 
@@ -126,16 +134,17 @@ Sloth will recursively discover every Git repository under the specified path, a
 |---|---|
 | `↑` / `↓` | Scroll vertically |
 | `←` / `→` | Scroll horizontally |
-| `f` | Toggle fullscreen mode |
-| `Esc` | Exit graph back to details |
-| `g` | Hide graph pane |
+| `f` / `m` | Toggle fullscreen mode |
+| `Esc` / `g` | Exit graph back to details |
 
 ### Diff Modal
 
 | Key | Action |
 |---|---|
-| `↑` / `↓` | Scroll diff |
-| `Esc` / `e` | Close diff modal |
+| `↑` / `↓` | Scroll one line |
+| `Page Up` / `Page Down` | Scroll ten lines |
+| `Home` | Jump to top |
+| `Esc` / `v` | Close diff modal |
 
 ## Architecture
 
@@ -149,21 +158,22 @@ src/
 ├── git/
 │   ├── mod.rs           # Public facade
 │   ├── models.rs        # RepoStatus, BranchInfo, StashInfo, WorktreeInfo, GitError
-│   ├── commands.rs      # Git command wrappers (analyze, sizes, graph, diff) + unit tests
+│   ├── commands.rs      # Git command wrappers (analyze, graph, diff) + unit tests
 │   └── stats.rs         # Branch stats (ahead/behind, shortstat parsing) + unit tests
 ├── ui.rs                # TUI runner (terminal setup, render loop, event dispatch)
 └── ui/
     ├── state.rs         # AppState, Focus enum, ScannerEvent, UiAction
-    ├── events.rs        # Keyboard input handler (260+ lines of keybinds)
+    ├── events.rs        # Keyboard input handler
     ├── theme.rs         # Theme engine with switchable color palettes and persistence
     └── components/
-        ├── mod.rs       # Component module exports
-        ├── header.rs    # Top bar — app title, repo count, theme indicator
-        ├── repositories.rs  # Left pane — repo list with disk size and selection
+        ├── mod.rs           # Component module exports
+        ├── header.rs        # Top bar — app title, repo count, theme indicator
+        ├── repositories.rs  # Left pane — repo list with live size streaming and selection
         ├── details.rs       # Middle pane — branches, stashes, worktrees with stats
         ├── graph.rs         # Right pane — ANSI git graph with fullscreen toggle
         ├── dashboard.rs     # Aggregated stats overview across all repositories
         ├── diff_modal.rs    # Floating modal for branch/stash diffs
+        ├── confirm_modal.rs # Confirmation prompt with action preview before execution
         └── help.rs          # Context-sensitive keyboard shortcut help bar
 ```
 
@@ -187,7 +197,7 @@ src/
 All Git and filesystem operations are abstracted behind two traits defined in `sys.rs`:
 
 - **`GitExecutor`** — `run_git_command()` (sync) and `run_git_command_async()` for async engine operations
-- **`FileSystem`** — `exists()`, `is_dir()`, `get_size()` for storage queries
+- **`FileSystem`** — `exists()` and `get_size()` (recursive for directories) for storage queries
 
 At runtime, `RealSystem` wraps native `std::process::Command` and `std::fs` calls. In tests, `MockSystem` provides deterministic, in-memory fakes — no disk access required.
 
@@ -205,7 +215,7 @@ The test suite covers:
 
 | Module | Tests |
 |---|---|
-| `git::commands` | `analyze_repository` with mocked Git outputs, `compute_repo_sizes` with virtual filesystems |
+| `git::commands` | `analyze_repository` with mocked Git outputs and virtual filesystems |
 | `git::stats` | `parse_shortstat` edge cases (empty, partial, malformed, insertions-only, deletions-only) |
 | `engine` | `execute_batch` for CleanRepo and PruneRemotes with mocked async commands |
 | `ui::state` | `AppState` initialization defaults and flag assertions |

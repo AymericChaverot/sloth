@@ -57,7 +57,7 @@ cargo test test_analyze_repository
 All Git and filesystem operations must go through the trait interfaces defined in `sys.rs`:
 
 - **`GitExecutor`** for any `git` CLI call (use `run_git_command` for sync, `run_git_command_async` for async)
-- **`FileSystem`** for any `std::fs` operation (`exists`, `is_dir`, `get_size`)
+- **`FileSystem`** for any `std::fs` operation (`exists`, `get_size`)
 
 Never call `std::process::Command::new("git")` or `std::fs::metadata()` directly. Always accept the trait as a parameter (`&impl GitExecutor` or `&impl FileSystem`).
 
@@ -105,6 +105,7 @@ src/
         ├── graph.rs         # Git commit graph pane
         ├── dashboard.rs     # Aggregated stats overlay
         ├── diff_modal.rs    # Branch/stash diff viewer
+        ├── confirm_modal.rs # Pre-execution confirmation prompt with action preview
         └── help.rs          # Context-sensitive help bar
 ```
 

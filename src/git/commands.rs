@@ -152,55 +152,10 @@ pub fn analyze_repository(
         analyzed: true,
         size_bytes: None,
         untracked_size_bytes: None,
+        size_finalized: false,
     })
 }
 
-pub fn compute_repo_sizes(
-    path: &Path,
-    worktree_paths: Vec<String>,
-    git_executor: &impl crate::sys::GitExecutor,
-    file_system: &impl crate::sys::FileSystem,
-) -> (
-    Option<u64>,                                    // size_bytes (.git)
-    Option<u64>,                                    // untracked_size_bytes
-    std::collections::HashMap<String, Option<u64>>, // worktree sizes
-) {
-    let size_bytes = file_system.get_size(&path.join(".git")).ok();
-
-    let mut untracked_size = 0;
-    let mut has_untracked = false;
-    if let Ok(out_str) = git_executor.run_git_command(path, &["clean", "-ndx"]) {
-        has_untracked = true;
-        for line in out_str.lines() {
-            if line.starts_with("Would remove ") {
-                let to_remove = line.trim_start_matches("Would remove ");
-                let full_path = path.join(to_remove);
-                if file_system.exists(&full_path) {
-                    if file_system.is_dir(&full_path) {
-                        untracked_size +=
-                            super::stats::get_repo_size(&full_path, file_system).unwrap_or(0); // Note: we should abstract recursive get_size but native ok for now
-                    } else {
-                        untracked_size += file_system.get_size(&full_path).unwrap_or(0);
-                    }
-                }
-            }
-        }
-    }
-
-    let untracked_size_bytes = if has_untracked {
-        Some(untracked_size)
-    } else {
-        None
-    };
-
-    let mut worktree_sizes = std::collections::HashMap::new();
-    for wt in worktree_paths {
-        let s = file_system.get_size(Path::new(&wt)).ok();
-        worktree_sizes.insert(wt, s);
-    }
-
-    (size_bytes, untracked_size_bytes, worktree_sizes)
-}
 
 pub fn get_git_graph(
     path: &Path,
@@ -321,31 +276,5 @@ mod tests {
         assert!(!status.worktrees.is_empty()); // Usually 1, but PathBuf matching is OS dependent in strings.
     }
 
-    #[test]
-    fn test_compute_repo_sizes() {
-        let mut mock = MockSystem::new();
-        let path = PathBuf::from("/fake/repo");
 
-        mock.file_sizes.insert(path.join(".git"), 1024);
-        mock.directories.push(path.join("untracked_dir"));
-        mock.file_sizes.insert(path.join("untracked_dir"), 2048);
-        mock.files.push(path.join("untracked.txt"));
-        mock.file_sizes.insert(path.join("untracked.txt"), 512);
-
-        mock.add_command_output(
-            &path,
-            &["clean", "-ndx"],
-            Ok("Would remove untracked_dir/\nWould remove untracked.txt\n".to_string()),
-        );
-
-        let wt_path = "/fake/repo/wt1".to_string();
-        mock.file_sizes.insert(PathBuf::from(&wt_path), 4096);
-
-        let (git_size, untracked_size, wt_sizes) =
-            compute_repo_sizes(&path, vec![wt_path.clone()], &mock, &mock);
-
-        assert_eq!(git_size, Some(1024));
-        assert_eq!(untracked_size, Some(2560)); // 2048 + 512
-        assert_eq!(wt_sizes.get(&wt_path), Some(&Some(4096)));
-    }
 }

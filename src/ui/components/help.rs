@@ -9,18 +9,18 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let theme = crate::ui::theme::get_theme(state.theme_index);
     let mut help_text = match state.focus {
         Focus::Repositories => {
-            "Left Pane: Up/Down navigate. Space select. X deep clean. 'p'/'c' prune/gc. 'd' dashboard. 'q' quit."
+            "Repos: Up/Down navigate. Space select. X deep clean. 'p'/'c' prune/gc. 'd' dashboard. '/' search. 't' theme. 'q' quit."
                 .to_string()
         }
         Focus::Details => {
-            "Middle Pane: Up/Down navigate. Space select. 'A' auto-select. Enter clean. 'v' diff. 'g' graph. Left repos."
+            "Details: Up/Down navigate. Space select. 'a' smart-select, 'A' select all, Esc deselect. Enter clean. 'v' diff. 'g' graph. Left back."
                 .to_string()
         }
         Focus::GitGraph => {
-            "Right Pane: Arrows to scroll. 'f' fullscreen. 't' theme. 'Esc' or 'g' back. 'q' quit.".to_string()
+            "Graph: Arrows scroll. 'f'/'m' fullscreen. 't' theme. 'Esc'/'g' back. 'q' quit.".to_string()
         }
         Focus::Dashboard => {
-            "Dashboard. 'q' quit. Left/Right or 'd' to exit.".to_string()
+            "Dashboard: 'q' quit. Left/Right/'d' to exit.".to_string()
         }
     };
     if let Some(ref ver) = state.update_available {

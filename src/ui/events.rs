@@ -6,6 +6,23 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
     if event::poll(Duration::from_millis(16))? {
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
+                // Confirm modal takes priority over everything else
+                if state.pending_action.is_some() {
+                    match key.code {
+                        KeyCode::Char('y') | KeyCode::Char('Y') => {
+                            state.action = state.pending_action.take();
+                            state.confirm_preview_lines = None;
+                            state.should_quit = true;
+                        }
+                        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                            state.pending_action = None;
+                            state.confirm_preview_lines = None;
+                        }
+                        _ => {}
+                    }
+                    return Ok(());
+                }
+
                 if state.diff_modal_open {
                     match key.code {
                         KeyCode::Esc | KeyCode::Char('v') => {
@@ -16,6 +33,15 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         }
                         KeyCode::Down => {
                             state.diff_scroll = state.diff_scroll.saturating_add(1);
+                        }
+                        KeyCode::PageUp => {
+                            state.diff_scroll = state.diff_scroll.saturating_sub(10);
+                        }
+                        KeyCode::PageDown => {
+                            state.diff_scroll = state.diff_scroll.saturating_add(10);
+                        }
+                        KeyCode::Home => {
+                            state.diff_scroll = 0;
                         }
                         _ => {}
                     }
@@ -46,7 +72,11 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         }
                     }
                     KeyCode::Esc => {
-                        if state.focus == Focus::Dashboard {
+                        if state.focus == Focus::Details {
+                            state.selected_branches.remove(&state.repo_index);
+                            state.selected_stashes.remove(&state.repo_index);
+                            state.selected_worktrees.remove(&state.repo_index);
+                        } else if state.focus == Focus::Dashboard {
                             state.focus = Focus::Repositories;
                         } else if state.focus == Focus::GitGraph {
                             state.graph_maximized = false;
@@ -147,34 +177,39 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                             }
                         }
                     }
-                    KeyCode::Char('A') | KeyCode::Char('a') => {
+                    KeyCode::Char('a') => {
                         if state.focus == Focus::Details && !state.repositories.is_empty() {
                             let repo = &state.repositories[state.repo_index];
                             let set = state.selected_branches.entry(state.repo_index).or_default();
                             for branch in &repo.branches {
-                                // Smart auto-select logic
                                 if branch.is_dead || branch.is_merged {
                                     set.insert(branch.name.clone());
                                 }
                             }
                         }
                     }
+                    KeyCode::Char('A') => {
+                        if state.focus == Focus::Details && !state.repositories.is_empty() {
+                            let repo = &state.repositories[state.repo_index];
+                            let set = state.selected_branches.entry(state.repo_index).or_default();
+                            for branch in &repo.branches {
+                                set.insert(branch.name.clone());
+                            }
+                        }
+                    }
                     KeyCode::Enter => {
                         if state.focus == Focus::Details {
-                            state.action = Some(UiAction::CleanRepo);
-                            state.should_quit = true;
+                            state.pending_action = Some(UiAction::CleanRepo);
                         }
                     }
                     KeyCode::Char('p') => {
                         if state.focus == Focus::Repositories {
-                            state.action = Some(UiAction::PruneRemotes);
-                            state.should_quit = true;
+                            state.pending_action = Some(UiAction::PruneRemotes);
                         }
                     }
                     KeyCode::Char('c') => {
                         if state.focus == Focus::Repositories {
-                            state.action = Some(UiAction::GarbageCollect);
-                            state.should_quit = true;
+                            state.pending_action = Some(UiAction::GarbageCollect);
                         }
                     }
                     KeyCode::Char('t') => {
@@ -191,8 +226,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                     }
                     KeyCode::Char('X') => {
                         if state.focus == Focus::Repositories && !state.repositories.is_empty() {
-                            state.action = Some(UiAction::DeepClean);
-                            state.should_quit = true;
+                            state.pending_action = Some(UiAction::DeepClean);
                         }
                     }
                     KeyCode::Char('d') => {
@@ -236,7 +270,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         Focus::Details => {
                             if !state.repositories.is_empty() {
                                 let repo = &state.repositories[state.repo_index];
-                                let total = repo.branches.len() + repo.stashes.len();
+                                let total = repo.branches.len() + repo.stashes.len() + repo.worktrees.len();
                                 if state.detail_index + 1 < total {
                                     state.detail_index += 1;
                                 }

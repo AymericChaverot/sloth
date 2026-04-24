@@ -21,7 +21,7 @@ graph LR
 
 1. **Scanner** walks the filesystem asynchronously, emitting `RepoFound` events.
 2. **Git Analyzer** runs `git` commands on each discovered repo via `GitExecutor`, emitting `RepoAnalyzed` events.
-3. **Size Calculator** runs sequentially in the background, emitting `SizeComputed` events for progressive disk usage display.
+3. **Size Calculator** runs sequentially in the background, emitting `SizePartial` events as each file/directory is measured (so the UI shows a live growing estimate) and a final `SizeComputed` event when complete.
 4. **Update Checker** queries GitHub releases API in the background, emitting `UpdateAvailable` if a newer version exists.
 5. **TUI Event Loop** consumes events, updates `AppState`, and re-renders every 16ms.
 6. **Execution Engine** performs destructive operations when the user confirms (branch delete, stash drop, worktree remove, prune, gc, deep clean).
@@ -43,7 +43,7 @@ Defines two traits for dependency injection:
 | Trait | Methods | Purpose |
 |---|---|---|
 | `GitExecutor` | `run_git_command()`, `run_git_command_async()`, `open_repo()` | Abstract all Git CLI interactions |
-| `FileSystem` | `exists()`, `is_dir()`, `get_size()` | Abstract all filesystem queries |
+| `FileSystem` | `exists()`, `get_size()` | Abstract all filesystem queries (`get_size` walks directories recursively) |
 
 **Implementations:**
 - `RealSystem` — wraps `std::process::Command`, `tokio::process::Command`, `std::fs`, and `gix::open`
@@ -60,7 +60,7 @@ Defines two traits for dependency injection:
 | File | Responsibility |
 |---|---|
 | `models.rs` | `RepoStatus`, `BranchInfo`, `StashInfo`, `WorktreeInfo`, `GitError` — pure data |
-| `commands.rs` | `analyze_repository`, `compute_repo_sizes`, `get_git_graph`, `get_branch_diff`, `get_stash_diff` — all accept `&impl GitExecutor` / `&impl FileSystem` |
+| `commands.rs` | `analyze_repository`, `get_git_graph`, `get_branch_diff`, `get_stash_diff` — all accept `&impl GitExecutor` |
 | `stats.rs` | `get_branch_stats` (ahead/behind/diff via `GitExecutor`), `get_repo_size` (via `FileSystem`), `parse_shortstat`, `format_size` |
 | `mod.rs` | Re-exports public API |
 
@@ -68,7 +68,7 @@ Defines two traits for dependency injection:
 - Uses `gix` only to validate/open repos; actual data comes from `git` CLI for reliability
 - `parse_shortstat` is a pure function with full test coverage
 - Graph and diff data are fetched lazily (on-demand) to avoid upfront cost
-- Size calculations run in a separate sequential background task to avoid I/O thrashing
+- Size calculations are inlined in `main.rs` and stream `SizePartial` events per file so the UI shows a live growing estimate rather than a blank then a jump
 
 ### `ui.rs` — TUI Runner
 
@@ -82,7 +82,7 @@ Defines two traits for dependency injection:
 
 - `AppState` — single struct holding all mutable TUI state (repo list, selections, focus, scroll offsets, loading flags)
 - `Focus` enum — tracks which pane has keyboard focus
-- `ScannerEvent` enum — messages from background tasks: `RepoFound`, `RepoAnalyzed`, `ScanComplete`, `AnalysisComplete`, `SizeComputed`, `UpdateAvailable`
+- `ScannerEvent` enum — messages from background tasks: `RepoFound`, `RepoAnalyzed`, `ScanComplete`, `AnalysisComplete`, `SizePartial` (live running estimate), `SizeComputed` (final), `UpdateAvailable`
 - `UiAction` enum — `CleanRepo`, `PruneRemotes`, `GarbageCollect`, `DeepClean`
 
 ### `ui/events.rs` — Input Handler
@@ -108,7 +108,8 @@ Each component is a pure `render(frame, state, area)` function:
 | `details.rs` | Center | Branch/stash/worktree list with selection checkboxes, ahead/behind stats, diff stats, merge status |
 | `graph.rs` | Right | ANSI-colored commit graph with Unicode box-drawing, fullscreen toggle |
 | `dashboard.rs` | Overlay | Aggregated stats overview across all scanned repositories |
-| `diff_modal.rs` | Overlay | Floating modal showing syntax-colored branch or stash diffs |
+| `diff_modal.rs` | Overlay | Floating modal showing syntax-colored branch or stash diffs with scroll position |
+| `confirm_modal.rs` | Overlay | Pre-execution confirmation prompt; shows action detail and deep-clean file preview |
 | `help.rs` | Bottom | Context-sensitive keyboard shortcut bar |
 
 ### `engine.rs` — Execution Engine
@@ -148,7 +149,8 @@ Main Thread          Tokio Runtime
     │                     │      └─ AnalysisComplete ──► mpsc ──► TUI
     │                     │
     │                     │─── Size Calculator (spawn_blocking, sequential)
-    │                     │      └─ SizeComputed ──► mpsc ──► TUI
+    │                     │      ├─ SizePartial ──► mpsc ──► TUI  (per file, live)
+    │                     │      └─ SizeComputed ──► mpsc ──► TUI (final)
     │                     │
     │                     │─── Update Checker (spawn_blocking)
     │                     │      └─ UpdateAvailable ──► mpsc ──► TUI
@@ -177,7 +179,7 @@ Main Thread          Tokio Runtime
 ## Testing Strategy
 
 - **Hermetic unit tests** via `MockSystem` — no real Git repos or disk access needed
-- **`git::commands`** — `analyze_repository` and `compute_repo_sizes` against mocked Git outputs
+- **`git::commands`** — `analyze_repository` against mocked Git outputs and virtual filesystems
 - **`git::stats`** — `parse_shortstat` edge cases (empty, partial, malformed, insertions-only, deletions-only)
 - **`engine`** — `execute_batch` for CleanRepo and PruneRemotes with mocked async commands
 - **`ui::state`** — `AppState` initialization invariants

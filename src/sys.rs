@@ -2,7 +2,6 @@ use std::path::Path;
 
 pub trait FileSystem {
     fn exists(&self, path: &Path) -> bool;
-    fn is_dir(&self, path: &Path) -> bool;
     fn get_size(&self, path: &Path) -> std::io::Result<u64>;
 }
 
@@ -24,13 +23,22 @@ impl FileSystem for RealSystem {
         path.exists()
     }
 
-    fn is_dir(&self, path: &Path) -> bool {
-        path.is_dir()
-    }
-
     fn get_size(&self, path: &Path) -> std::io::Result<u64> {
-        let meta = std::fs::metadata(path)?;
-        Ok(meta.len())
+        if path.is_dir() {
+            let mut total = 0u64;
+            for entry in std::fs::read_dir(path)? {
+                let entry = entry?;
+                let entry_path = entry.path();
+                if entry_path.is_dir() {
+                    total += self.get_size(&entry_path).unwrap_or(0);
+                } else {
+                    total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                }
+            }
+            Ok(total)
+        } else {
+            Ok(std::fs::metadata(path)?.len())
+        }
     }
 }
 
@@ -124,10 +132,6 @@ pub mod mock {
         fn exists(&self, path: &Path) -> bool {
             self.files.contains(&path.to_path_buf())
                 || self.directories.contains(&path.to_path_buf())
-        }
-
-        fn is_dir(&self, path: &Path) -> bool {
-            self.directories.contains(&path.to_path_buf())
         }
 
         fn get_size(&self, path: &Path) -> std::io::Result<u64> {

@@ -45,4 +45,5 @@ pub struct RepoStatus {
     pub analyzed: bool,
     pub size_bytes: Option<u64>,
     pub untracked_size_bytes: Option<u64>,
+    pub size_finalized: bool,
 }

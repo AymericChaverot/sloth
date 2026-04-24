@@ -18,6 +18,8 @@ pub mod theme;
 
 pub use state::{AppState, ScannerEvent, UiAction};
 
+pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
 pub fn run_tui(
     mut state: AppState,
     rx: Receiver<ScannerEvent>,
@@ -46,6 +48,7 @@ pub fn run_tui(
                         analyzed: false,
                         size_bytes: None,
                         untracked_size_bytes: None,
+                        size_finalized: false,
                     });
                 }
                 ScannerEvent::ScanComplete => state.is_scanning = false,
@@ -59,6 +62,11 @@ pub fn run_tui(
                     }
                     state.analyzed_count += 1;
                 }
+                ScannerEvent::SizePartial { path, size_bytes } => {
+                    if let Some(repo) = state.repositories.iter_mut().find(|r| r.path == path) {
+                        repo.size_bytes = Some(size_bytes);
+                    }
+                }
                 ScannerEvent::SizeComputed {
                     path,
                     size_bytes,
@@ -68,6 +76,7 @@ pub fn run_tui(
                     if let Some(repo) = state.repositories.iter_mut().find(|r| r.path == path) {
                         repo.size_bytes = size_bytes;
                         repo.untracked_size_bytes = untracked_size_bytes;
+                        repo.size_finalized = true;
                         for wt in repo.worktrees.iter_mut() {
                             if let Some(&size) = worktree_sizes.get(&wt.path) {
                                 wt.size_bytes = size;
@@ -104,6 +113,47 @@ pub fn run_tui(
                     repo.graph_lines = Some(vec![]);
                 }
             }
+        }
+
+        // Fetch deep clean preview when pending
+        if matches!(state.pending_action, Some(UiAction::DeepClean))
+            && state.confirm_preview_lines.is_none()
+        {
+            use crate::sys::GitExecutor as _;
+            let sys = crate::sys::RealSystem;
+            let paths: Vec<PathBuf> = if state.selected_repositories.is_empty() {
+                state
+                    .repositories
+                    .get(state.repo_index)
+                    .map(|r| vec![r.path.clone()])
+                    .unwrap_or_default()
+            } else {
+                state
+                    .selected_repositories
+                    .iter()
+                    .filter_map(|&i| state.repositories.get(i).map(|r| r.path.clone()))
+                    .collect()
+            };
+            let mut preview: Vec<String> = Vec::new();
+            for path in &paths {
+                let label = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                match sys.run_git_command(path, &["clean", "-nxdff", "--exclude=.git"]) {
+                    Ok(out) => {
+                        for line in out.lines() {
+                            preview.push(format!("[{}] {}", label, line));
+                        }
+                    }
+                    Err(e) => preview.push(format!("[{}] error: {}", label, e)),
+                }
+            }
+            if preview.is_empty() {
+                preview.push("(nothing to clean)".to_string());
+            }
+            state.confirm_preview_lines = Some(preview);
         }
 
         // Fetch diff if modal is opened and lines are empty
@@ -207,6 +257,9 @@ pub fn run_tui(
 
             // Diff Modal Overlay (if open)
             components::diff_modal::render(f, &mut state, f.area());
+
+            // Confirm Modal Overlay (if a pending action awaits confirmation)
+            components::confirm_modal::render(f, &state, f.area());
         })?;
 
         events::handle_events(&mut state)?;

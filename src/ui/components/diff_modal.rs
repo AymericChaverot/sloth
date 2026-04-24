@@ -33,8 +33,19 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         Text::raw("Loading diff...")
     };
 
+    let title = if let Some(ref lines) = state.diff_lines {
+        let total = lines.len();
+        let pos = (state.diff_scroll as usize).min(total.saturating_sub(1)) + 1;
+        format!(
+            " Diff ({}/{} lines — Up/Down/PgUp/PgDn/Home, Esc/v to close) ",
+            pos, total
+        )
+    } else {
+        " Diff (Esc/v to close) ".to_string()
+    };
+
     let block = Block::default()
-        .title(" Diff Preview (Esc/v to close, Up/Down to scroll) ")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.secondary));
 
