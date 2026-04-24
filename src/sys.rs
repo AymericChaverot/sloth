@@ -52,8 +52,7 @@ impl GitExecutor for RealSystem {
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(std::io::Error::other(
                 String::from_utf8_lossy(&output.stderr).to_string(),
             ))
         }
@@ -78,8 +77,7 @@ impl GitExecutor for RealSystem {
             if output.status.success() {
                 Ok(String::from_utf8_lossy(&output.stdout).to_string())
             } else {
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Err(std::io::Error::other(
                     String::from_utf8_lossy(&output.stderr).to_string(),
                 ))
             }

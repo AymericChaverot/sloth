@@ -10,12 +10,11 @@ fn get_config_path() -> PathBuf {
 }
 
 pub fn load_saved_theme() -> usize {
-    if let Ok(content) = fs::read_to_string(get_config_path()) {
-        if let Ok(idx) = content.trim().parse::<usize>() {
-            if idx < THEMES.len() {
-                return idx;
-            }
-        }
+    if let Ok(content) = fs::read_to_string(get_config_path())
+        && let Ok(idx) = content.trim().parse::<usize>()
+        && idx < THEMES.len()
+    {
+        return idx;
     }
     0
 }

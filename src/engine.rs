@@ -133,7 +133,7 @@ async fn execute_action(
 
             for w in worktrees {
                 match sys
-                    .run_git_command_async(path, &["worktree", "remove", "--force", &w])
+                    .run_git_command_async(path, &["worktree", "remove", "--force", w])
                     .await
                 {
                     Ok(_) => msgs.push(format!("Removed worktree {}", w)),
@@ -168,7 +168,10 @@ async fn execute_action(
                     }
                     Ok(stdout)
                 }
-                Err(e) => Err(EngineError::ExecutionError(format!("Failed to prune remotes: {}", e))),
+                Err(e) => Err(EngineError::ExecutionError(format!(
+                    "Failed to prune remotes: {}",
+                    e
+                ))),
             }
         }
         Action::GarbageCollect => match sys.run_git_command_async(path, &["gc"]).await {
@@ -179,7 +182,10 @@ async fn execute_action(
                 }
                 Ok(stdout)
             }
-            Err(e) => Err(EngineError::ExecutionError(format!("Failed to garbage collect: {}", e))),
+            Err(e) => Err(EngineError::ExecutionError(format!(
+                "Failed to garbage collect: {}",
+                e
+            ))),
         },
         Action::DeepClean => {
             match sys
@@ -189,7 +195,10 @@ async fn execute_action(
                 Ok(_) => {
                     Ok("Deep clean successful. Untracked and ignored files purged.".to_string())
                 }
-                Err(e) => Err(EngineError::ExecutionError(format!("Failed to deep clean: {}", e))),
+                Err(e) => Err(EngineError::ExecutionError(format!(
+                    "Failed to deep clean: {}",
+                    e
+                ))),
             }
         }
     }

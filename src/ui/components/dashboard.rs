@@ -47,10 +47,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         ]),
         ratatui::text::Line::from(vec![
             ratatui::text::Span::raw("Total Size on Disk: "),
-            ratatui::text::Span::styled(
-                format!("{}", size_str),
-                Style::default().fg(theme.secondary),
-            ),
+            ratatui::text::Span::styled(size_str.to_string(), Style::default().fg(theme.secondary)),
         ]),
         ratatui::text::Line::from(""),
         ratatui::text::Line::from(vec![

@@ -2,7 +2,14 @@ name: Release
 
 on:
   push:
-    branches: [main, master]
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.0.1)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -11,80 +18,36 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # First, run CI checks
-  check:
-    name: CI Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt -- --check
-      - run: cargo clippy -- -D warnings
-      - run: cargo test --verbose
-
-  # Extract version and check if tag exists
-  prepare:
-    name: Prepare Release
-    needs: check
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag_exists: ${{ steps.check_tag.outputs.exists }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Extract version from Cargo.toml
-        id: version
-        run: |
-          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          echo "version=v${VERSION}" >> $GITHUB_OUTPUT
-          echo "Detected version: v${VERSION}"
-
-      - name: Check if tag already exists
-        id: check_tag
-        run: |
-          if git rev-parse "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Tag ${{ steps.version.outputs.version }} already exists, skipping release."
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Tag ${{ steps.version.outputs.version }} does not exist, proceeding."
-          fi
-
-  # Build binaries for all platforms
   build:
     name: Build (${{ matrix.target }})
-    needs: prepare
-    if: needs.prepare.outputs.tag_exists == 'false'
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
             archive: tar.gz
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            archive: tar.gz
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
             archive: zip
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build release binary
+      - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package (Unix)
@@ -104,31 +67,23 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sloth-${{ matrix.target }}
-          path: sloth-${{ matrix.target }}.${{ matrix.archive }}
+          path: sloth-${{ matrix.target }}.*
 
-  # Create the GitHub Release
   release:
-    name: Create Release
-    needs: [prepare, build]
+    name: Release
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
-      - name: List artifacts
-        run: find artifacts -type f
-
-      - name: Create GitHub Release
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.prepare.outputs.version }}
-          name: Sloth ${{ needs.prepare.outputs.version }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
           generate_release_notes: true
-          files: |
-            artifacts/sloth-x86_64-unknown-linux-gnu/sloth-x86_64-unknown-linux-gnu.tar.gz
-            artifacts/sloth-aarch64-apple-darwin/sloth-aarch64-apple-darwin.tar.gz
-            artifacts/sloth-x86_64-pc-windows-msvc/sloth-x86_64-pc-windows-msvc.zip
+          files: artifacts/*

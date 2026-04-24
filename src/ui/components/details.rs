@@ -16,283 +16,281 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let is_repo_analyzed = state
         .repositories
         .get(state.repo_index)
-        .map_or(false, |r| r.analyzed);
+        .is_some_and(|r| r.analyzed);
 
-    if let Some(repo) = state.repositories.get(state.repo_index) {
-        if repo.analyzed {
-            detail_items.push(
-                ListItem::new("--- Branches ---").style(Style::default().fg(theme.secondary)),
-            );
+    if let Some(repo) = state.repositories.get(state.repo_index)
+        && repo.analyzed
+    {
+        detail_items
+            .push(ListItem::new("--- Branches ---").style(Style::default().fg(theme.secondary)));
 
-            let selected_b = state.selected_branches.entry(state.repo_index).or_default();
-            for (b_idx, branch) in repo.branches.iter().enumerate() {
-                if state.is_searching && !state.search_query.is_empty() {
-                    if !branch
-                        .name
-                        .to_lowercase()
-                        .contains(&state.search_query.to_lowercase())
-                    {
-                        continue;
-                    }
-                }
+        let selected_b = state.selected_branches.entry(state.repo_index).or_default();
+        for (b_idx, branch) in repo.branches.iter().enumerate() {
+            if state.is_searching
+                && !state.search_query.is_empty()
+                && !branch
+                    .name
+                    .to_lowercase()
+                    .contains(&state.search_query.to_lowercase())
+            {
+                continue;
+            }
 
-                let is_active = if b_idx == state.detail_index {
-                    ">> "
-                } else {
-                    "   "
-                };
-                let checkbox = if selected_b.contains(&branch.name) {
-                    "[x] "
-                } else {
-                    "[ ] "
-                };
-                let dead_marker = if branch.is_dead { " (DEAD)" } else { "" };
+            let is_active = if b_idx == state.detail_index {
+                ">> "
+            } else {
+                "   "
+            };
+            let checkbox = if selected_b.contains(&branch.name) {
+                "[x] "
+            } else {
+                "[ ] "
+            };
+            let dead_marker = if branch.is_dead { " (DEAD)" } else { "" };
 
-                let is_selected = b_idx == state.detail_index && state.focus == Focus::Details;
+            let is_selected = b_idx == state.detail_index && state.focus == Focus::Details;
 
-                let mut spans = vec![
-                    Span::styled(
-                        is_active,
-                        if is_selected {
-                            Style::default().fg(theme.primary)
-                        } else {
-                            Style::default().fg(theme.text_normal)
-                        },
-                    ),
-                    Span::styled(
-                        checkbox,
-                        if is_selected {
-                            Style::default().fg(theme.primary)
-                        } else {
-                            Style::default().fg(theme.text_normal)
-                        },
-                    ),
-                    Span::styled(
-                        branch.name.clone() + dead_marker,
-                        if branch.is_dead {
-                            Style::default().fg(theme.error)
-                        } else if is_selected {
-                            Style::default().fg(theme.primary)
-                        } else {
-                            Style::default().fg(theme.text_normal)
-                        },
-                    ),
-                ];
-
-                if let Some(ref date) = branch.last_commit_date {
-                    spans.push(Span::styled(
-                        format!(" ({})", date),
-                        Style::default().fg(theme.secondary),
-                    ));
-                }
-
-                if branch.is_merged {
-                    spans.push(Span::styled(" (Merged)", Style::default().fg(theme.merged)));
-                }
-
-                let display_stats = if branch.is_dead || branch.upstream.is_some() {
-                    if !branch.is_dead
-                        && branch.ahead == 0
-                        && branch.behind == 0
-                        && branch.diff_insertions == 0
-                        && branch.diff_deletions == 0
-                    {
-                        spans.push(Span::styled(
-                            " (Up to date with upstream)",
-                            Style::default().fg(theme.text_dimmed),
-                        ));
-                        false
+            let mut spans = vec![
+                Span::styled(
+                    is_active,
+                    if is_selected {
+                        Style::default().fg(theme.primary)
                     } else {
-                        true
-                    }
-                } else {
+                        Style::default().fg(theme.text_normal)
+                    },
+                ),
+                Span::styled(
+                    checkbox,
+                    if is_selected {
+                        Style::default().fg(theme.primary)
+                    } else {
+                        Style::default().fg(theme.text_normal)
+                    },
+                ),
+                Span::styled(
+                    branch.name.clone() + dead_marker,
+                    if branch.is_dead {
+                        Style::default().fg(theme.error)
+                    } else if is_selected {
+                        Style::default().fg(theme.primary)
+                    } else {
+                        Style::default().fg(theme.text_normal)
+                    },
+                ),
+            ];
+
+            if let Some(ref date) = branch.last_commit_date {
+                spans.push(Span::styled(
+                    format!(" ({})", date),
+                    Style::default().fg(theme.secondary),
+                ));
+            }
+
+            if branch.is_merged {
+                spans.push(Span::styled(" (Merged)", Style::default().fg(theme.merged)));
+            }
+
+            let display_stats = if branch.is_dead || branch.upstream.is_some() {
+                if !branch.is_dead
+                    && branch.ahead == 0
+                    && branch.behind == 0
+                    && branch.diff_insertions == 0
+                    && branch.diff_deletions == 0
+                {
                     spans.push(Span::styled(
-                        " (Local)",
+                        " (Up to date with upstream)",
                         Style::default().fg(theme.text_dimmed),
                     ));
                     false
-                };
-
-                if display_stats {
-                    spans.push(Span::raw(" "));
-                    if branch.ahead > 0 {
-                        spans.push(Span::styled(
-                            format!("\u{2191}{}", branch.ahead),
-                            Style::default().fg(theme.success),
-                        ));
-                    } else {
-                        spans.push(Span::styled(
-                            format!("\u{2191}0"),
-                            Style::default().fg(theme.text_dimmed),
-                        ));
-                    }
-                    spans.push(Span::raw(" "));
-                    if branch.behind > 0 {
-                        spans.push(Span::styled(
-                            format!("\u{2193}{}", branch.behind),
-                            Style::default().fg(theme.error),
-                        ));
-                    } else {
-                        spans.push(Span::styled(
-                            format!("\u{2193}0"),
-                            Style::default().fg(theme.text_dimmed),
-                        ));
-                    }
-                    spans.push(Span::styled(" (", Style::default().fg(theme.text_normal)));
-                    if branch.diff_insertions > 0 {
-                        spans.push(Span::styled(
-                            format!("+{}", branch.diff_insertions),
-                            Style::default().fg(theme.success),
-                        ));
-                    } else {
-                        spans.push(Span::styled(
-                            format!("+0"),
-                            Style::default().fg(theme.text_dimmed),
-                        ));
-                    }
-                    spans.push(Span::raw(" "));
-                    if branch.diff_deletions > 0 {
-                        spans.push(Span::styled(
-                            format!("-{}", branch.diff_deletions),
-                            Style::default().fg(theme.error),
-                        ));
-                    } else {
-                        spans.push(Span::styled(
-                            format!("-0"),
-                            Style::default().fg(theme.text_dimmed),
-                        ));
-                    }
-                    spans.push(Span::styled(")", Style::default().fg(theme.text_normal)));
+                } else {
+                    true
                 }
+            } else {
+                spans.push(Span::styled(
+                    " (Local)",
+                    Style::default().fg(theme.text_dimmed),
+                ));
+                false
+            };
 
-                detail_items.push(ListItem::new(Line::from(spans)));
-            }
-
-            detail_items
-                .push(ListItem::new("--- Stashes ---").style(Style::default().fg(theme.secondary)));
-            let selected_s = state.selected_stashes.entry(state.repo_index).or_default();
-            for (s_idx, stash) in repo.stashes.iter().enumerate() {
-                if state.is_searching && !state.search_query.is_empty() {
-                    if !stash
-                        .message
-                        .to_lowercase()
-                        .contains(&state.search_query.to_lowercase())
-                    {
-                        continue;
-                    }
-                }
-
-                let actual_idx = repo.branches.len() + s_idx;
-                let is_active = if actual_idx == state.detail_index {
-                    ">> "
-                } else {
-                    "   "
-                };
-                let checkbox = if selected_s.contains(&stash.index) {
-                    "[x] "
-                } else {
-                    "[ ] "
-                };
-
-                let is_selected = actual_idx == state.detail_index && state.focus == Focus::Details;
-
-                let spans = vec![
-                    Span::styled(
-                        is_active,
-                        if is_selected {
-                            Style::default().fg(theme.primary)
-                        } else {
-                            Style::default().fg(theme.text_normal)
-                        },
-                    ),
-                    Span::styled(
-                        checkbox,
-                        if is_selected {
-                            Style::default().fg(theme.primary)
-                        } else {
-                            Style::default().fg(theme.text_normal)
-                        },
-                    ),
-                    Span::styled(
-                        stash.message.clone(),
-                        if is_selected {
-                            Style::default().fg(theme.primary)
-                        } else {
-                            Style::default().fg(theme.text_normal)
-                        },
-                    ),
-                ];
-
-                detail_items.push(ListItem::new(Line::from(spans)));
-            }
-
-            detail_items.push(
-                ListItem::new("--- Worktrees ---").style(Style::default().fg(theme.secondary)),
-            );
-            let selected_wt = state
-                .selected_worktrees
-                .entry(state.repo_index)
-                .or_default();
-            for (wt_idx, wt) in repo.worktrees.iter().enumerate() {
-                if state.is_searching && !state.search_query.is_empty() {
-                    if !wt
-                        .path
-                        .to_lowercase()
-                        .contains(&state.search_query.to_lowercase())
-                    {
-                        continue;
-                    }
-                }
-
-                let actual_idx = repo.branches.len() + repo.stashes.len() + wt_idx;
-                let is_active = if actual_idx == state.detail_index {
-                    ">> "
-                } else {
-                    "   "
-                };
-                let checkbox = if selected_wt.contains(&wt.path) {
-                    "[x] "
-                } else {
-                    "[ ] "
-                };
-                let is_selected = actual_idx == state.detail_index && state.focus == Focus::Details;
-
-                let mut spans = vec![
-                    Span::styled(
-                        is_active,
-                        if is_selected {
-                            Style::default().fg(theme.primary)
-                        } else {
-                            Style::default().fg(theme.text_normal)
-                        },
-                    ),
-                    Span::styled(
-                        checkbox,
-                        if is_selected {
-                            Style::default().fg(theme.primary)
-                        } else {
-                            Style::default().fg(theme.text_normal)
-                        },
-                    ),
-                    Span::styled(
-                        wt.path.clone(),
-                        if is_selected {
-                            Style::default().fg(theme.primary)
-                        } else {
-                            Style::default().fg(theme.text_normal)
-                        },
-                    ),
-                ];
-
-                if let Some(b) = &wt.branch {
+            if display_stats {
+                spans.push(Span::raw(" "));
+                if branch.ahead > 0 {
                     spans.push(Span::styled(
-                        format!(" [{}]", b),
-                        Style::default().fg(theme.secondary),
+                        format!("\u{2191}{}", branch.ahead),
+                        Style::default().fg(theme.success),
+                    ));
+                } else {
+                    spans.push(Span::styled(
+                        "\u{2191}0".to_string(),
+                        Style::default().fg(theme.text_dimmed),
                     ));
                 }
-
-                detail_items.push(ListItem::new(Line::from(spans)));
+                spans.push(Span::raw(" "));
+                if branch.behind > 0 {
+                    spans.push(Span::styled(
+                        format!("\u{2193}{}", branch.behind),
+                        Style::default().fg(theme.error),
+                    ));
+                } else {
+                    spans.push(Span::styled(
+                        "\u{2193}0".to_string(),
+                        Style::default().fg(theme.text_dimmed),
+                    ));
+                }
+                spans.push(Span::styled(" (", Style::default().fg(theme.text_normal)));
+                if branch.diff_insertions > 0 {
+                    spans.push(Span::styled(
+                        format!("+{}", branch.diff_insertions),
+                        Style::default().fg(theme.success),
+                    ));
+                } else {
+                    spans.push(Span::styled(
+                        "+0".to_string(),
+                        Style::default().fg(theme.text_dimmed),
+                    ));
+                }
+                spans.push(Span::raw(" "));
+                if branch.diff_deletions > 0 {
+                    spans.push(Span::styled(
+                        format!("-{}", branch.diff_deletions),
+                        Style::default().fg(theme.error),
+                    ));
+                } else {
+                    spans.push(Span::styled(
+                        "-0".to_string(),
+                        Style::default().fg(theme.text_dimmed),
+                    ));
+                }
+                spans.push(Span::styled(")", Style::default().fg(theme.text_normal)));
             }
+
+            detail_items.push(ListItem::new(Line::from(spans)));
+        }
+
+        detail_items
+            .push(ListItem::new("--- Stashes ---").style(Style::default().fg(theme.secondary)));
+        let selected_s = state.selected_stashes.entry(state.repo_index).or_default();
+        for (s_idx, stash) in repo.stashes.iter().enumerate() {
+            if state.is_searching
+                && !state.search_query.is_empty()
+                && !stash
+                    .message
+                    .to_lowercase()
+                    .contains(&state.search_query.to_lowercase())
+            {
+                continue;
+            }
+
+            let actual_idx = repo.branches.len() + s_idx;
+            let is_active = if actual_idx == state.detail_index {
+                ">> "
+            } else {
+                "   "
+            };
+            let checkbox = if selected_s.contains(&stash.index) {
+                "[x] "
+            } else {
+                "[ ] "
+            };
+
+            let is_selected = actual_idx == state.detail_index && state.focus == Focus::Details;
+
+            let spans = vec![
+                Span::styled(
+                    is_active,
+                    if is_selected {
+                        Style::default().fg(theme.primary)
+                    } else {
+                        Style::default().fg(theme.text_normal)
+                    },
+                ),
+                Span::styled(
+                    checkbox,
+                    if is_selected {
+                        Style::default().fg(theme.primary)
+                    } else {
+                        Style::default().fg(theme.text_normal)
+                    },
+                ),
+                Span::styled(
+                    stash.message.clone(),
+                    if is_selected {
+                        Style::default().fg(theme.primary)
+                    } else {
+                        Style::default().fg(theme.text_normal)
+                    },
+                ),
+            ];
+
+            detail_items.push(ListItem::new(Line::from(spans)));
+        }
+
+        detail_items
+            .push(ListItem::new("--- Worktrees ---").style(Style::default().fg(theme.secondary)));
+        let selected_wt = state
+            .selected_worktrees
+            .entry(state.repo_index)
+            .or_default();
+        for (wt_idx, wt) in repo.worktrees.iter().enumerate() {
+            if state.is_searching
+                && !state.search_query.is_empty()
+                && !wt
+                    .path
+                    .to_lowercase()
+                    .contains(&state.search_query.to_lowercase())
+            {
+                continue;
+            }
+
+            let actual_idx = repo.branches.len() + repo.stashes.len() + wt_idx;
+            let is_active = if actual_idx == state.detail_index {
+                ">> "
+            } else {
+                "   "
+            };
+            let checkbox = if selected_wt.contains(&wt.path) {
+                "[x] "
+            } else {
+                "[ ] "
+            };
+            let is_selected = actual_idx == state.detail_index && state.focus == Focus::Details;
+
+            let mut spans = vec![
+                Span::styled(
+                    is_active,
+                    if is_selected {
+                        Style::default().fg(theme.primary)
+                    } else {
+                        Style::default().fg(theme.text_normal)
+                    },
+                ),
+                Span::styled(
+                    checkbox,
+                    if is_selected {
+                        Style::default().fg(theme.primary)
+                    } else {
+                        Style::default().fg(theme.text_normal)
+                    },
+                ),
+                Span::styled(
+                    wt.path.clone(),
+                    if is_selected {
+                        Style::default().fg(theme.primary)
+                    } else {
+                        Style::default().fg(theme.text_normal)
+                    },
+                ),
+            ];
+
+            if let Some(b) = &wt.branch {
+                spans.push(Span::styled(
+                    format!(" [{}]", b),
+                    Style::default().fg(theme.secondary),
+                ));
+            }
+
+            detail_items.push(ListItem::new(Line::from(spans)));
         }
     }
 
@@ -352,15 +350,15 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         Span::raw(label)
     }];
 
-    if let Some(repo) = state.repositories.get(state.repo_index) {
-        if let Some(url) = &repo.remote_url {
-            title_spans.push(Span::raw(" ["));
-            title_spans.push(Span::styled(
-                url.clone(),
-                Style::default().fg(theme.secondary),
-            ));
-            title_spans.push(Span::raw("]"));
-        }
+    if let Some(repo) = state.repositories.get(state.repo_index)
+        && let Some(url) = &repo.remote_url
+    {
+        title_spans.push(Span::raw(" ["));
+        title_spans.push(Span::styled(
+            url.clone(),
+            Style::default().fg(theme.secondary),
+        ));
+        title_spans.push(Span::raw("]"));
     }
 
     if state.is_searching {

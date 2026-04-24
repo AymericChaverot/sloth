@@ -6,10 +6,10 @@ pub(crate) fn parse_shortstat(stat: &str) -> (usize, usize) {
     for part in stat.split(',') {
         let part = part.trim();
         if part.contains("insertion") {
-            let num: String = part.chars().filter(|c| c.is_digit(10)).collect();
+            let num: String = part.chars().filter(|c| c.is_ascii_digit()).collect();
             insertions = num.parse().unwrap_or(0);
         } else if part.contains("deletion") {
-            let num: String = part.chars().filter(|c| c.is_digit(10)).collect();
+            let num: String = part.chars().filter(|c| c.is_ascii_digit()).collect();
             deletions = num.parse().unwrap_or(0);
         }
     }

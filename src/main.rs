@@ -85,9 +85,7 @@ async fn main() -> anyhow::Result<()> {
                 // 2. Walk untracked/ignored files, accumulating and streaming updates
                 let mut untracked_size = 0u64;
                 let mut has_untracked = false;
-                if let Ok(out_str) =
-                    sys.run_git_command(&path, &["clean", "-ndx"])
-                {
+                if let Ok(out_str) = sys.run_git_command(&path, &["clean", "-ndx"]) {
                     has_untracked = true;
                     for line in out_str.lines() {
                         if line.starts_with("Would remove ") {

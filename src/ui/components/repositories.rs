@@ -72,13 +72,13 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     .to_string_lossy()
                     .to_string();
 
-                if state.is_searching && !state.search_query.is_empty() {
-                    if !repo_name
+                if state.is_searching
+                    && !state.search_query.is_empty()
+                    && !repo_name
                         .to_lowercase()
                         .contains(&state.search_query.to_lowercase())
-                    {
-                        return None;
-                    }
+                {
+                    return None;
                 }
 
                 let is_focused = i == state.repo_index;

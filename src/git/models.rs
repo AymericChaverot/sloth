@@ -4,7 +4,13 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum GitError {
     #[error("Failed to open repository: {0}")]
-    OpenError(#[from] gix::open::Error),
+    OpenError(Box<gix::open::Error>),
+}
+
+impl From<gix::open::Error> for GitError {
+    fn from(e: gix::open::Error) -> Self {
+        GitError::OpenError(Box::new(e))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

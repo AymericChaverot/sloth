@@ -72,61 +72,61 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     ]));
     lines.push(Line::raw(""));
 
-    if let UiAction::CleanRepo = pending {
-        if let Some(repo) = state.repositories.get(state.repo_index) {
-            if let Some(branches) = state.selected_branches.get(&state.repo_index) {
-                if !branches.is_empty() {
+    if let UiAction::CleanRepo = pending
+        && let Some(repo) = state.repositories.get(state.repo_index)
+    {
+        if let Some(branches) = state.selected_branches.get(&state.repo_index)
+            && !branches.is_empty()
+        {
+            lines.push(Line::from(Span::styled(
+                "Branches:",
+                Style::default().fg(theme.secondary),
+            )));
+            let mut sorted: Vec<&String> = branches.iter().collect();
+            sorted.sort();
+            for b in sorted {
+                lines.push(Line::from(Span::styled(
+                    format!("  - {}", b),
+                    Style::default().fg(theme.error),
+                )));
+            }
+            lines.push(Line::raw(""));
+        }
+        if let Some(stashes) = state.selected_stashes.get(&state.repo_index)
+            && !stashes.is_empty()
+        {
+            lines.push(Line::from(Span::styled(
+                "Stashes:",
+                Style::default().fg(theme.secondary),
+            )));
+            let mut sorted: Vec<usize> = stashes.iter().copied().collect();
+            sorted.sort();
+            for s in sorted {
+                if let Some(st) = repo.stashes.iter().find(|st| st.index == s) {
                     lines.push(Line::from(Span::styled(
-                        "Branches:",
-                        Style::default().fg(theme.secondary),
+                        format!("  - {}", st.message),
+                        Style::default().fg(theme.error),
                     )));
-                    let mut sorted: Vec<&String> = branches.iter().collect();
-                    sorted.sort();
-                    for b in sorted {
-                        lines.push(Line::from(Span::styled(
-                            format!("  - {}", b),
-                            Style::default().fg(theme.error),
-                        )));
-                    }
-                    lines.push(Line::raw(""));
                 }
             }
-            if let Some(stashes) = state.selected_stashes.get(&state.repo_index) {
-                if !stashes.is_empty() {
-                    lines.push(Line::from(Span::styled(
-                        "Stashes:",
-                        Style::default().fg(theme.secondary),
-                    )));
-                    let mut sorted: Vec<usize> = stashes.iter().copied().collect();
-                    sorted.sort();
-                    for s in sorted {
-                        if let Some(st) = repo.stashes.iter().find(|st| st.index == s) {
-                            lines.push(Line::from(Span::styled(
-                                format!("  - {}", st.message),
-                                Style::default().fg(theme.error),
-                            )));
-                        }
-                    }
-                    lines.push(Line::raw(""));
-                }
+            lines.push(Line::raw(""));
+        }
+        if let Some(worktrees) = state.selected_worktrees.get(&state.repo_index)
+            && !worktrees.is_empty()
+        {
+            lines.push(Line::from(Span::styled(
+                "Worktrees:",
+                Style::default().fg(theme.secondary),
+            )));
+            let mut sorted: Vec<&String> = worktrees.iter().collect();
+            sorted.sort();
+            for w in sorted {
+                lines.push(Line::from(Span::styled(
+                    format!("  - {}", w),
+                    Style::default().fg(theme.error),
+                )));
             }
-            if let Some(worktrees) = state.selected_worktrees.get(&state.repo_index) {
-                if !worktrees.is_empty() {
-                    lines.push(Line::from(Span::styled(
-                        "Worktrees:",
-                        Style::default().fg(theme.secondary),
-                    )));
-                    let mut sorted: Vec<&String> = worktrees.iter().collect();
-                    sorted.sort();
-                    for w in sorted {
-                        lines.push(Line::from(Span::styled(
-                            format!("  - {}", w),
-                            Style::default().fg(theme.error),
-                        )));
-                    }
-                    lines.push(Line::raw(""));
-                }
-            }
+            lines.push(Line::raw(""));
         }
     }
 

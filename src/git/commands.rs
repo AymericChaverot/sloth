@@ -72,12 +72,12 @@ pub fn analyze_repository(
     };
 
     let mut merged_branches = std::collections::HashSet::new();
-    if let Some(ref target) = main_branch {
-        if let Ok(out_str) = sys.run_git_command(path, &["branch", "--merged", target]) {
-            for line in out_str.lines() {
-                let b = line.replace("* ", "").trim().to_string();
-                merged_branches.insert(b);
-            }
+    if let Some(ref target) = main_branch
+        && let Ok(out_str) = sys.run_git_command(path, &["branch", "--merged", target])
+    {
+        for line in out_str.lines() {
+            let b = line.replace("* ", "").trim().to_string();
+            merged_branches.insert(b);
         }
     }
 
@@ -155,7 +155,6 @@ pub fn analyze_repository(
         size_finalized: false,
     })
 }
-
 
 pub fn get_git_graph(
     path: &Path,
@@ -275,6 +274,4 @@ mod tests {
         assert_eq!(status.stashes.len(), 2);
         assert!(!status.worktrees.is_empty()); // Usually 1, but PathBuf matching is OS dependent in strings.
     }
-
-
 }

@@ -20,10 +20,9 @@ pub use state::{AppState, ScannerEvent, UiAction};
 
 pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-pub fn run_tui(
-    mut state: AppState,
-    rx: Receiver<ScannerEvent>,
-) -> io::Result<Option<(Vec<PathBuf>, UiAction, Vec<String>, Vec<usize>, Vec<String>)>> {
+type TuiResult = io::Result<Option<(Vec<PathBuf>, UiAction, Vec<String>, Vec<usize>, Vec<String>)>>;
+
+pub fn run_tui(mut state: AppState, rx: Receiver<ScannerEvent>) -> TuiResult {
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
 
@@ -94,13 +93,12 @@ pub fn run_tui(
         let mut needs_fetch = false;
         let mut fetch_path = PathBuf::new();
 
-        if state.show_graph || state.graph_maximized {
-            if let Some(repo) = state.repositories.get(state.repo_index) {
-                if repo.graph_lines.is_none() {
-                    needs_fetch = true;
-                    fetch_path = repo.path.clone();
-                }
-            }
+        if (state.show_graph || state.graph_maximized)
+            && let Some(repo) = state.repositories.get(state.repo_index)
+            && repo.graph_lines.is_none()
+        {
+            needs_fetch = true;
+            fetch_path = repo.path.clone();
         }
 
         if needs_fetch {
@@ -108,10 +106,8 @@ pub fn run_tui(
                 if let Some(repo) = state.repositories.get_mut(state.repo_index) {
                     repo.graph_lines = Some(lines);
                 }
-            } else {
-                if let Some(repo) = state.repositories.get_mut(state.repo_index) {
-                    repo.graph_lines = Some(vec![]);
-                }
+            } else if let Some(repo) = state.repositories.get_mut(state.repo_index) {
+                repo.graph_lines = Some(vec![]);
             }
         }
 
@@ -157,37 +153,38 @@ pub fn run_tui(
         }
 
         // Fetch diff if modal is opened and lines are empty
-        if state.diff_modal_open && state.diff_lines.is_none() {
-            if let Some(repo) = state.repositories.get(state.repo_index) {
-                let b_len = repo.branches.len();
-                if state.detail_index < b_len {
-                    let b = &repo.branches[state.detail_index];
-                    let target = if !b.is_dead && b.upstream.is_some() {
-                        b.upstream.clone().unwrap()
-                    } else if repo.branches.iter().any(|b| b.name == "main") {
-                        "main".to_string()
-                    } else {
-                        "master".to_string()
-                    };
-                    let diff_target = format!("{}...{}", target, b.name);
-                    if let Ok(diff) = crate::git::commands::get_branch_diff(
-                        &repo.path,
-                        &diff_target,
-                        &crate::sys::RealSystem,
-                    ) {
-                        state.diff_lines = Some(diff);
-                    }
+        if state.diff_modal_open
+            && state.diff_lines.is_none()
+            && let Some(repo) = state.repositories.get(state.repo_index)
+        {
+            let b_len = repo.branches.len();
+            if state.detail_index < b_len {
+                let b = &repo.branches[state.detail_index];
+                let target = if !b.is_dead && b.upstream.is_some() {
+                    b.upstream.clone().unwrap()
+                } else if repo.branches.iter().any(|b| b.name == "main") {
+                    "main".to_string()
                 } else {
-                    let s_idx = state.detail_index.saturating_sub(b_len);
-                    if let Some(stash) = repo.stashes.get(s_idx) {
-                        if let Ok(diff) = crate::git::commands::get_stash_diff(
-                            &repo.path,
-                            stash.index,
-                            &crate::sys::RealSystem,
-                        ) {
-                            state.diff_lines = Some(diff);
-                        }
-                    }
+                    "master".to_string()
+                };
+                let diff_target = format!("{}...{}", target, b.name);
+                if let Ok(diff) = crate::git::commands::get_branch_diff(
+                    &repo.path,
+                    &diff_target,
+                    &crate::sys::RealSystem,
+                ) {
+                    state.diff_lines = Some(diff);
+                }
+            } else {
+                let s_idx = state.detail_index.saturating_sub(b_len);
+                if let Some(stash) = repo.stashes.get(s_idx)
+                    && let Ok(diff) = crate::git::commands::get_stash_diff(
+                        &repo.path,
+                        stash.index,
+                        &crate::sys::RealSystem,
+                    )
+                {
+                    state.diff_lines = Some(diff);
                 }
             }
         }
