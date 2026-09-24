@@ -56,9 +56,14 @@ pub fn run_tui(
                     }
                     state.analyzed_count += 1;
                 }
-                ScannerEvent::SizePartial { path, size_bytes } => {
+                ScannerEvent::SizePartial {
+                    path,
+                    size_bytes,
+                    untracked_size_bytes,
+                } => {
                     if let Some(repo) = state.repositories.iter_mut().find(|r| r.path == path) {
-                        repo.size_bytes = Some(size_bytes);
+                        repo.size_bytes = size_bytes;
+                        repo.untracked_size_bytes = Some(untracked_size_bytes);
                     }
                 }
                 ScannerEvent::SizeComputed {

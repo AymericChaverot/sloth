@@ -8,9 +8,11 @@ pub enum ScannerEvent {
     RepoFound(PathBuf),
     ScanComplete,
     RepoAnalyzed(RepoStatus),
+    /// Running estimate while untracked files are being measured.
     SizePartial {
         path: PathBuf,
-        size_bytes: u64,
+        size_bytes: Option<u64>,
+        untracked_size_bytes: u64,
     },
     SizeComputed {
         path: PathBuf,

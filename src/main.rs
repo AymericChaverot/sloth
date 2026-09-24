@@ -63,6 +63,7 @@ async fn main() -> anyhow::Result<()> {
                     status
                         .worktrees
                         .iter()
+                        .filter(|w| !w.is_main)
                         .map(|w| w.path.clone())
                         .collect::<Vec<_>>(),
                 ));
@@ -81,10 +82,10 @@ async fn main() -> anyhow::Result<()> {
             for (path, wt_paths) in size_tasks_args {
                 // 1. .git directory size — send immediately so something appears
                 let git_size = sys.get_size(&path.join(".git")).ok();
-                let mut running = git_size.unwrap_or(0);
                 let _ = tx.send(ui::ScannerEvent::SizePartial {
                     path: path.clone(),
-                    size_bytes: running,
+                    size_bytes: git_size,
+                    untracked_size_bytes: 0,
                 });
 
                 // 2. Walk untracked/ignored files, accumulating and streaming updates
@@ -99,10 +100,10 @@ async fn main() -> anyhow::Result<()> {
                             if sys.exists(&full_path) {
                                 let file_size = sys.get_size(&full_path).unwrap_or(0);
                                 untracked_size += file_size;
-                                running += file_size;
                                 let _ = tx.send(ui::ScannerEvent::SizePartial {
                                     path: path.clone(),
-                                    size_bytes: running,
+                                    size_bytes: git_size,
+                                    untracked_size_bytes: untracked_size,
                                 });
                             }
                         }

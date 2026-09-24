@@ -42,22 +42,29 @@ impl FileSystem for RealSystem {
         path.exists()
     }
 
+    /// Apparent size of a file or directory tree. Symlinks (and Windows
+    /// junctions) are counted as links, never followed: following them could
+    /// count data outside the repository, twice, or loop forever.
     fn get_size(&self, path: &Path) -> std::io::Result<u64> {
-        if path.is_dir() {
-            let mut total = 0u64;
-            for entry in std::fs::read_dir(path)? {
-                let entry = entry?;
-                let entry_path = entry.path();
-                if entry_path.is_dir() {
-                    total += self.get_size(&entry_path).unwrap_or(0);
-                } else {
-                    total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+        let meta = std::fs::symlink_metadata(path)?;
+        if !meta.is_dir() {
+            return Ok(meta.len());
+        }
+        let mut total = 0u64;
+        let mut pending = vec![path.to_path_buf()];
+        while let Some(dir) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                match entry.file_type() {
+                    Ok(ft) if ft.is_dir() => pending.push(entry.path()),
+                    Ok(_) => total += entry.metadata().map(|m| m.len()).unwrap_or(0),
+                    Err(_) => {}
                 }
             }
-            Ok(total)
-        } else {
-            Ok(std::fs::metadata(path)?.len())
         }
+        Ok(total)
     }
 }
 

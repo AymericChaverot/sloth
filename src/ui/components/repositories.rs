@@ -111,16 +111,28 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 }
                 let spinner = crate::ui::SPINNER;
                 let frame = spinner[(state.loader_tick / 4) % spinner.len()];
+                let fmt = crate::git::stats::format_size;
                 match (repo.size_bytes, repo.size_finalized) {
                     (Some(size), true) => {
+                        let untracked = repo.untracked_size_bytes.unwrap_or(0);
+                        let label = if untracked > 0 {
+                            format!(" [.git {} · {} untracked]", fmt(size), fmt(untracked))
+                        } else {
+                            format!(" [.git {}]", fmt(size))
+                        };
                         content_spans.push(ratatui::text::Span::styled(
-                            format!(" [{}]", crate::git::stats::format_size(size)),
+                            label,
                             Style::default().fg(theme.text_dimmed),
                         ));
                     }
                     (Some(size), false) => {
                         content_spans.push(ratatui::text::Span::styled(
-                            format!(" [~{} {}]", crate::git::stats::format_size(size), frame),
+                            format!(
+                                " [.git {} · ~{} untracked {}]",
+                                fmt(size),
+                                fmt(repo.untracked_size_bytes.unwrap_or(0)),
+                                frame
+                            ),
                             Style::default().fg(theme.text_dimmed),
                         ));
                     }
