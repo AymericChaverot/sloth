@@ -100,6 +100,26 @@ pub fn branch_rows(state: &AppState) -> Vec<(usize, usize)> {
     rows
 }
 
+/// Repositories with something to clean, most promising first.
+pub fn dashboard_rows(state: &AppState) -> Vec<usize> {
+    let config = &state.config;
+    let score = |repo: &RepoStatus| {
+        (
+            cleanable_branches(repo, config) + repo.stashes.len(),
+            repo.untracked_size_bytes.unwrap_or(0),
+        )
+    };
+    let mut rows: Vec<usize> = (0..state.repositories.len())
+        .filter(|&i| score(&state.repositories[i]) != (0, 0))
+        .collect();
+    rows.sort_by(|&a, &b| {
+        score(&state.repositories[b])
+            .cmp(&score(&state.repositories[a]))
+            .then_with(|| state.repositories[a].path.cmp(&state.repositories[b].path))
+    });
+    rows
+}
+
 /// Rows of the Queue tab: every operation the queue would run, per repository.
 pub fn queue_rows(state: &AppState) -> Vec<(std::path::PathBuf, crate::engine::Operation)> {
     state

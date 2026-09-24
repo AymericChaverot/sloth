@@ -58,7 +58,34 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent) {
         },
         Tab::Branches => branches_key(state, key.code),
         Tab::Queue => queue_key(state, key.code),
-        Tab::Dashboard => {}
+        Tab::Dashboard => dashboard_key(state, key.code),
+    }
+}
+
+fn dashboard_key(state: &mut AppState, code: KeyCode) {
+    let rows = views::dashboard_rows(state);
+    let last = rows.len().saturating_sub(1);
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.dashboard_cursor = state.dashboard_cursor.saturating_sub(1)
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.dashboard_cursor = (state.dashboard_cursor + 1).min(last)
+        }
+        KeyCode::Char('a') => {
+            let all: Vec<PathBuf> = state.repositories.iter().map(|r| r.path.clone()).collect();
+            smart_select(state, &all);
+        }
+        KeyCode::Enter => {
+            if let Some(&i) = rows.get(state.dashboard_cursor) {
+                let path = state.repositories[i].path.clone();
+                state.repo_filter.clear();
+                state.focus_repo(path);
+                state.focus = Focus::Details;
+                state.tab = Tab::Repos;
+            }
+        }
+        _ => {}
     }
 }
 

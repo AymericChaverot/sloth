@@ -62,7 +62,10 @@ pub const QUEUE: &[Binding] = &[
     ("C", "clear the queue"),
 ];
 
-pub const DASHBOARD: &[Binding] = &[("1", "back to repositories")];
+pub const DASHBOARD: &[Binding] = &[
+    ("a", "queue every merged & gone branch of every repository"),
+    ("Enter", "open the repository"),
+];
 
 pub const SECTIONS: &[(&str, &[Binding])] = &[
     ("Global", GLOBAL),
@@ -112,6 +115,10 @@ pub fn hints(state: &AppState) -> &'static [Binding] {
             ("C", "clear"),
             ("?", "help"),
         ],
-        Tab::Dashboard => &[("1", "repos"), ("?", "help"), ("q", "quit")],
+        Tab::Dashboard => &[
+            ("a", "queue all cleanable"),
+            ("Enter", "open repo"),
+            ("?", "help"),
+        ],
     }
 }

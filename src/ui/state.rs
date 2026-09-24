@@ -267,6 +267,8 @@ pub struct AppState {
     pub branch_table: TableState,
     pub queue_cursor: usize,
     pub queue_table: TableState,
+    pub dashboard_cursor: usize,
+    pub dashboard_table: TableState,
     pub graph_scroll_y: u16,
     pub graph_scroll_x: u16,
     /// Cleanup queue: items selected in any repository.
@@ -323,6 +325,8 @@ impl AppState {
             branch_table: TableState::default(),
             queue_cursor: 0,
             queue_table: TableState::default(),
+            dashboard_cursor: 0,
+            dashboard_table: TableState::default(),
             graph_scroll_y: 0,
             graph_scroll_x: 0,
             selection: Default::default(),
