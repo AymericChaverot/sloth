@@ -105,7 +105,11 @@ pub fn fixture_state() -> AppState {
 fn render(state: &mut AppState, width: u16, height: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
     terminal.draw(|f| crate::ui::draw(f, state)).unwrap();
-    terminal.backend().to_string()
+    // Keep snapshots stable across version bumps.
+    terminal
+        .backend()
+        .to_string()
+        .replace(concat!("v", env!("CARGO_PKG_VERSION")), "vX.Y.Z")
 }
 
 #[test]
