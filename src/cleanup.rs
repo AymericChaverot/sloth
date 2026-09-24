@@ -1,7 +1,8 @@
 //! Cleanup domain rules: what may be deleted, and why not.
 
 use crate::config::{Config, glob_match};
-use crate::git::models::{BranchInfo, RepoStatus, WorktreeInfo};
+use crate::engine::Operation;
+use crate::git::models::{BranchInfo, RepoStatus, StashInfo, WorktreeInfo};
 
 /// Why an item cannot be selected for deletion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,10 +54,143 @@ pub fn is_smart_candidate(repo: &RepoStatus, branch: &BranchInfo, config: &Confi
         && (branch.is_fully_merged() || branch.is_dead)
 }
 
+/// Turns selected items into engine operations. Protected or unknown items are
+/// dropped, so a plan can never touch something the rules forbid.
+pub fn cleanup_operations<'a>(
+    repo: &RepoStatus,
+    branches: impl IntoIterator<Item = &'a str>,
+    stash_shas: impl IntoIterator<Item = &'a str>,
+    worktree_paths: impl IntoIterator<Item = &'a str>,
+    config: &Config,
+) -> Vec<Operation> {
+    let mut operations = Vec::new();
+
+    let mut worktrees: Vec<&WorktreeInfo> = worktree_paths
+        .into_iter()
+        .filter_map(|p| repo.worktrees.iter().find(|w| w.path == p))
+        .filter(|w| worktree_protection(w).is_none())
+        .collect();
+    worktrees.sort_by(|a, b| a.path.cmp(&b.path));
+    // Worktrees first: a branch checked out in a removed worktree becomes deletable.
+    operations.extend(worktrees.iter().map(|w| Operation::RemoveWorktree {
+        path: w.path.clone(),
+        force: w.is_dirty,
+        prunable: w.is_prunable,
+    }));
+
+    let freed: Vec<&str> = worktrees
+        .iter()
+        .filter_map(|w| w.branch.as_deref())
+        .collect();
+    let mut selected: Vec<&BranchInfo> = branches
+        .into_iter()
+        .filter_map(|name| repo.branches.iter().find(|b| b.name == name))
+        .filter(|b| match branch_protection(repo, b, config) {
+            None => true,
+            Some(Protection::CheckedOut) => !b.is_active && freed.contains(&b.name.as_str()),
+            Some(_) => false,
+        })
+        .collect();
+    selected.sort_by(|a, b| a.name.cmp(&b.name));
+    operations.extend(selected.iter().map(|b| Operation::DeleteBranch {
+        name: b.name.clone(),
+        sha: b.sha.clone(),
+    }));
+
+    let mut stashes: Vec<&StashInfo> = stash_shas
+        .into_iter()
+        .filter_map(|sha| repo.stashes.iter().find(|s| s.sha == sha))
+        .collect();
+    stashes.sort_by_key(|s| s.index);
+    operations.extend(stashes.iter().map(|s| Operation::DropStash {
+        sha: s.sha.clone(),
+        message: s.message.clone(),
+    }));
+
+    operations
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn plan_filters_protected_items_and_orders_worktrees_first() {
+        let mut repo = repo();
+        repo.branches = vec![
+            branch("trunk"),
+            BranchInfo {
+                sha: "f1".into(),
+                worktree_path: Some("/wt".into()),
+                ..branch("feat")
+            },
+            BranchInfo {
+                sha: "o1".into(),
+                ..branch("old")
+            },
+        ];
+        repo.worktrees = vec![
+            WorktreeInfo {
+                path: "/r".into(),
+                is_main: true,
+                ..Default::default()
+            },
+            WorktreeInfo {
+                path: "/wt".into(),
+                branch: Some("feat".into()),
+                is_dirty: true,
+                ..Default::default()
+            },
+        ];
+        repo.stashes = vec![StashInfo {
+            index: 0,
+            sha: "s0".into(),
+            message: "wip".into(),
+            created_ts: None,
+        }];
+
+        let ops = cleanup_operations(
+            &repo,
+            ["trunk", "old", "feat", "missing"],
+            ["s0", "nope"],
+            ["/r", "/wt"],
+            &Config::default(),
+        );
+        assert_eq!(
+            ops,
+            vec![
+                Operation::RemoveWorktree {
+                    path: "/wt".into(),
+                    force: true,
+                    prunable: false
+                },
+                Operation::DeleteBranch {
+                    name: "feat".into(),
+                    sha: "f1".into()
+                },
+                Operation::DeleteBranch {
+                    name: "old".into(),
+                    sha: "o1".into()
+                },
+                Operation::DropStash {
+                    sha: "s0".into(),
+                    message: "wip".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn plan_keeps_branch_of_kept_worktree() {
+        let mut repo = repo();
+        repo.branches = vec![BranchInfo {
+            worktree_path: Some("/wt".into()),
+            ..branch("feat")
+        }];
+        let ops = cleanup_operations(&repo, ["feat"], [], [], &Config::default());
+        assert!(ops.is_empty());
+    }
 
     fn repo() -> RepoStatus {
         let mut repo = RepoStatus::pending(PathBuf::from("/r"));

@@ -50,13 +50,6 @@ pub(crate) fn diff_shortstat(
         .unwrap_or((0, 0))
 }
 
-// Note: abstracting directory traversal natively into the trait is slightly more complex,
-// for now `FileSystem` `get_size` acts as a proxy for the entire implementation.
-// So we can completely drop recursive logic here and rely on the Trait mapping.
-pub fn get_repo_size(path: &Path, fs: &impl crate::sys::FileSystem) -> Result<u64, std::io::Error> {
-    fs.get_size(path)
-}
-
 pub fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;

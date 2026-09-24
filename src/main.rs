@@ -149,96 +149,42 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState::new(config);
 
-    if let Some((paths, action, branches, stashes, worktrees)) = ui::run_tui(state, rx, tx_ui)? {
-        let sys = crate::sys::RealSystem;
-        let mut size_before = 0;
-        for path in &paths {
-            if let Ok(s) = crate::git::stats::get_repo_size(path, &sys) {
-                size_before += s;
-            }
-        }
-        for wt in &worktrees {
-            if let Ok(s) = crate::git::stats::get_repo_size(std::path::Path::new(wt), &sys) {
-                size_before += s;
-            }
-        }
-
-        let engine_action = match action {
-            ui::UiAction::CleanRepo => {
-                if branches.is_empty() && stashes.is_empty() && worktrees.is_empty() {
-                    println!("No branches, stashes, or worktrees selected for deletion.");
-                    return Ok(());
-                }
-                engine::Action::CleanRepo {
-                    branches,
-                    stashes,
-                    worktrees: worktrees.clone(),
-                }
-            }
-            ui::UiAction::PruneRemotes => engine::Action::PruneRemotes,
-            ui::UiAction::GarbageCollect => engine::Action::GarbageCollect,
-            ui::UiAction::DeepClean => engine::Action::DeepClean,
-        };
-
-        if paths.len() == 1 {
+    match ui::run_tui(state, rx, tx_ui)? {
+        Some(plans) if !plans.is_empty() => {
+            let count: usize = plans.iter().map(|p| p.operations.len()).sum();
             println!(
-                "\nExecuting {} on {} (Dry-run false)...",
-                match engine_action {
-                    engine::Action::CleanRepo { .. } => "CleanRepo",
-                    engine::Action::PruneRemotes => "PruneRemotes",
-                    engine::Action::GarbageCollect => "GarbageCollect",
-                    engine::Action::DeepClean => "DeepClean",
-                },
-                paths[0].display()
+                "\nRunning {} operation(s) on {} repositorie(s)...",
+                count,
+                plans.len()
             );
-        } else {
-            println!(
-                "\nExecuting {} on {} repositories (Dry-run false)...",
-                match engine_action {
-                    engine::Action::CleanRepo { .. } => "CleanRepo",
-                    engine::Action::PruneRemotes => "PruneRemotes",
-                    engine::Action::GarbageCollect => "GarbageCollect",
-                    engine::Action::DeepClean => "DeepClean",
-                },
-                paths.len()
-            );
+            let results = engine::execute(plans, false, sys::RealSystem, None).await;
+            print_results(&results);
         }
-
-        let results = engine::execute_batch(
-            paths.clone(),
-            engine_action,
-            false, // REAL EXECUTION!
-            sys.clone(),
-        )
-        .await;
-
-        for res in results {
-            let symbol = if res.success { "✅" } else { "❌" };
-            println!("{} {}: {}", symbol, res.repo_path.display(), res.message);
-        }
-
-        let mut size_after = 0;
-        for path in &paths {
-            if let Ok(s) = crate::git::stats::get_repo_size(path, &sys) {
-                size_after += s;
-            }
-        }
-        for wt in &worktrees {
-            if let Ok(s) = crate::git::stats::get_repo_size(std::path::Path::new(wt), &sys) {
-                size_after += s;
-            }
-        }
-
-        let recovered = size_before.saturating_sub(size_after);
-        if recovered > 0 {
-            println!(
-                "\nDisk space recovered: {}",
-                crate::git::stats::format_size(recovered)
-            );
-        }
-    } else {
-        println!("No action executed.");
+        Some(_) => println!("Nothing selected."),
+        None => println!("No action executed."),
     }
 
     Ok(())
+}
+
+fn print_results(results: &[engine::OpResult]) {
+    let mut current: Option<&std::path::Path> = None;
+    for res in results {
+        if current != Some(res.repo.as_path()) {
+            println!("\n{}", res.repo.display());
+            current = Some(res.repo.as_path());
+        }
+        match &res.outcome {
+            Ok(msg) => println!("  ✅ {}: {}", res.operation.describe(), msg),
+            Err(err) => println!("  ❌ {}: {}", res.operation.describe(), err),
+        }
+    }
+    let freed: u64 = results.iter().map(|r| r.freed_bytes).sum();
+    let failed = results.iter().filter(|r| !r.is_ok()).count();
+    println!(
+        "\n{} succeeded, {} failed, {} freed.",
+        results.len() - failed,
+        failed,
+        git::stats::format_size(freed)
+    );
 }

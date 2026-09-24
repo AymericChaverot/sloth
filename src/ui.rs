@@ -20,7 +20,7 @@ pub use state::{AppState, ScannerEvent, UiAction};
 
 pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-type TuiResult = io::Result<Option<(Vec<PathBuf>, UiAction, Vec<String>, Vec<usize>, Vec<String>)>>;
+type TuiResult = io::Result<Option<Vec<crate::engine::RepoPlan>>>;
 
 pub fn run_tui(
     mut state: AppState,
@@ -301,47 +301,57 @@ pub fn run_tui(
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
 
-    if let Some(action) = state.action {
-        let mut paths = Vec::new();
+    Ok(state
+        .action
+        .take()
+        .map(|action| build_plans(&state, action)))
+}
 
-        // If 'CleanRepo', it only applies to the currently focused repository (not bulk)
+/// Turns the confirmed action and the current selection into engine plans.
+fn build_plans(state: &AppState, action: UiAction) -> Vec<crate::engine::RepoPlan> {
+    use crate::engine::{Operation, RepoPlan};
+
+    let focused = state.repositories.get(state.repo_index);
+    let targets: Vec<&crate::git::RepoStatus> =
         if matches!(action, UiAction::CleanRepo) || state.selected_repositories.is_empty() {
-            if let Some(repo) = state.repositories.get(state.repo_index) {
-                paths.push(repo.path.clone());
-            }
+            focused.into_iter().collect()
         } else {
-            // Bulk action triggered
-            for idx in &state.selected_repositories {
-                if let Some(repo) = state.repositories.get(*idx) {
-                    paths.push(repo.path.clone());
+            let mut indices: Vec<usize> = state.selected_repositories.iter().copied().collect();
+            indices.sort_unstable();
+            indices
+                .into_iter()
+                .filter_map(|i| state.repositories.get(i))
+                .collect()
+        };
+
+    targets
+        .into_iter()
+        .map(|repo| {
+            let operations = match action {
+                UiAction::CleanRepo => {
+                    let branches = state.selected_branches.get(&state.repo_index);
+                    let stashes = state.selected_stashes.get(&state.repo_index);
+                    let worktrees = state.selected_worktrees.get(&state.repo_index);
+                    crate::cleanup::cleanup_operations(
+                        repo,
+                        branches.into_iter().flatten().map(String::as_str),
+                        repo.stashes
+                            .iter()
+                            .filter(|s| stashes.is_some_and(|set| set.contains(&s.index)))
+                            .map(|s| s.sha.as_str()),
+                        worktrees.into_iter().flatten().map(String::as_str),
+                        &state.config,
+                    )
                 }
+                UiAction::PruneRemotes => vec![Operation::PruneRemotes],
+                UiAction::GarbageCollect => vec![Operation::GarbageCollect],
+                UiAction::DeepClean => vec![Operation::DeepClean],
+            };
+            RepoPlan {
+                repo: repo.path.clone(),
+                operations,
             }
-        }
-
-        if paths.is_empty() {
-            return Ok(None);
-        }
-
-        let branches = state
-            .selected_branches
-            .remove(&state.repo_index)
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        let stashes = state
-            .selected_stashes
-            .remove(&state.repo_index)
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        let worktrees = state
-            .selected_worktrees
-            .remove(&state.repo_index)
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        Ok(Some((paths, action, branches, stashes, worktrees)))
-    } else {
-        Ok(None)
-    }
+        })
+        .filter(|plan| !plan.operations.is_empty())
+        .collect()
 }
