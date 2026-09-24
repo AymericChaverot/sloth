@@ -55,7 +55,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
         if current_repo != Some(&result.repo) {
             current_repo = Some(&result.repo);
             lines.push(Line::from(Span::styled(
-                result.repo.display().to_string(),
+                state.display_path(&result.repo),
                 Style::default()
                     .fg(theme.secondary)
                     .add_modifier(Modifier::BOLD),

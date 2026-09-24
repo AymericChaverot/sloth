@@ -1,0 +1,28 @@
+---
+source: src/ui/tests.rs
+expression: "render(&mut state, 100, 24)"
+---
+"🦥 sloth v0.1.0  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branche[Default]" Hidden by multi-width symbols: [(1, " ")]
+" 1 Repos │ 2 Branches │ 3 Queue (4) │ 4 Dashboard                                                   "
+"┌ Branches 6 · showing all (f) ────────────────────────────────────────────────────────────────────┐"
+"│    Repository          Branch                      Status              Age  ↑↓        Diff       │"
+"│[x] api       ┌ Confirm ───────────────────────────────────────────────────────────┐12            │"
+"│[x] api       │Delete 4 branches in 2 repos                                        │30            │"
+"│[-] api       │                                                                    │              │"
+"│[x] api       │                                                                    │↓0     +120 -4│"
+"│[x] web       │api                                                                 │↓0            │"
+"│[-] web       │  delete branch feat/login                                          │              │"
+"│              │  delete branch fix/typo                                            │              │"
+"│              │  delete branch wip/cache  ⚠ unmerged, unpushed commits             │              │"
+"│              │web                                                                 │              │"
+"│              │  delete branch chore/deps                                          │              │"
+"│              │                                                                    │              │"
+"│              │                                                                    │              │"
+"│              │                                                                    │              │"
+"│              │                                                                    │              │"
+"│              │y confirm   n / Esc cancel                                          │              │"
+"│              └────────────────────────────────────────────────────────────────────┘              │"
+"│                                                                                                  │"
+"│                                                                                                  │"
+"└──────────────────────────────────────────────────────────────────────────────────────────────────┘"
+" Space select  a select cleanable  f filter  s sort  / search  Enter  4 branches added to the queue "

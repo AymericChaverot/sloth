@@ -205,6 +205,16 @@ fn queue_tab_reviews_items_of_several_repositories() {
 }
 
 #[test]
+fn confirmation_lists_the_queue_with_warnings() {
+    let mut state = fixture_state();
+    state.tab = Tab::Branches;
+    press(&mut state, "fffff"); // all branches
+    press(&mut state, "A"); // every unprotected branch
+    press(&mut state, "x");
+    insta::assert_snapshot!(render(&mut state, 100, 24));
+}
+
+#[test]
 fn empty_queue_explains_how_to_fill_it() {
     let mut state = fixture_state();
     state.tab = Tab::Queue;
