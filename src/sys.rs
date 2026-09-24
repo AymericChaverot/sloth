@@ -2,6 +2,8 @@ use std::path::Path;
 
 pub trait FileSystem {
     fn get_size(&self, path: &Path) -> std::io::Result<u64>;
+    /// Whether `path` is the root of a Git repository (or worktree).
+    fn is_repository(&self, path: &Path) -> bool;
 }
 
 pub trait GitExecutor {
@@ -40,6 +42,10 @@ impl FileSystem for RealSystem {
     /// Apparent size of a file or directory tree. Symlinks (and Windows
     /// junctions) are counted as links, never followed: following them could
     /// count data outside the repository, twice, or loop forever.
+    fn is_repository(&self, path: &Path) -> bool {
+        path.join(".git").exists()
+    }
+
     fn get_size(&self, path: &Path) -> std::io::Result<u64> {
         let meta = std::fs::symlink_metadata(path)?;
         if !meta.is_dir() {
@@ -150,6 +156,8 @@ pub mod mock {
     #[derive(Clone)]
     pub struct MockSystem {
         pub file_sizes: HashMap<PathBuf, u64>,
+        /// Directories reported as nested repositories.
+        pub repositories: Vec<PathBuf>,
         pub command_outputs: HashMap<(PathBuf, Vec<String>), Result<String, String>>,
     }
 
@@ -157,6 +165,7 @@ pub mod mock {
         pub fn new() -> Self {
             Self {
                 file_sizes: HashMap::new(),
+                repositories: Vec::new(),
                 command_outputs: HashMap::new(),
             }
         }
@@ -189,6 +198,10 @@ pub mod mock {
     const STDIN_MARKER: &str = "<stdin>";
 
     impl FileSystem for MockSystem {
+        fn is_repository(&self, path: &Path) -> bool {
+            self.repositories.iter().any(|r| r == path)
+        }
+
         fn get_size(&self, path: &Path) -> std::io::Result<u64> {
             if let Some(&size) = self.file_sizes.get(path) {
                 Ok(size)

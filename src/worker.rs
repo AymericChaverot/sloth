@@ -1,16 +1,20 @@
 //! Background pipeline: discovery → analysis → disk usage, streamed to the UI.
 //!
 //! Each repository is analyzed as soon as it is discovered (bounded
-//! concurrency), and its disk usage is queued right after. Sizes are measured
-//! one repository at a time to avoid I/O thrashing.
+//! concurrency), and its disk usage is queued right after, measured by a
+//! few threads so a huge repository does not hold back the others.
 
 use crate::git::RepoStatus;
-use crate::sys::{FileSystem as _, GitExecutor as _, RealSystem};
+use crate::sys::{FileSystem as _, RealSystem};
 use crate::ui::ScannerEvent;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
+
+/// Repositories measured at the same time: enough to overlap slow ones,
+/// few enough not to thrash the disk.
+const SIZE_THREADS: usize = 4;
 
 struct SizeJob {
     repo: PathBuf,
@@ -28,12 +32,23 @@ impl Worker {
     /// `deep_clean_keep`: patterns excluded from the reclaimable size.
     pub fn new(events: Sender<ScannerEvent>, deep_clean_keep: Vec<String>) -> Self {
         let (sizes, jobs) = std::sync::mpsc::channel::<SizeJob>();
-        let size_events = events.clone();
-        std::thread::spawn(move || {
-            for job in jobs {
-                measure(&job, &deep_clean_keep, &size_events);
-            }
-        });
+        let jobs = Arc::new(std::sync::Mutex::new(jobs));
+        let keep = Arc::new(deep_clean_keep);
+        for _ in 0..SIZE_THREADS {
+            let (jobs, keep, events) = (jobs.clone(), keep.clone(), events.clone());
+            std::thread::spawn(move || {
+                loop {
+                    let job = match jobs.lock() {
+                        Ok(jobs) => jobs.recv(),
+                        Err(_) => return,
+                    };
+                    match job {
+                        Ok(job) => measure(&job, &keep, &events),
+                        Err(_) => return,
+                    }
+                }
+            });
+        }
         let parallelism = std::thread::available_parallelism().map_or(4, |n| n.get());
         Self {
             events,
@@ -126,20 +141,20 @@ fn measure(job: &SizeJob, keep: &[String], events: &Sender<ScannerEvent>) {
         untracked_size_bytes: 0,
     });
 
-    let args = crate::engine::deep_clean_args(true, keep);
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    let untracked = sys.run_git_command(repo, &args).ok().map(|out| {
-        let mut total = 0u64;
-        for path in crate::engine::deep_clean_paths(&out) {
-            total += sys.get_size(&repo.join(path)).unwrap_or(0);
-            let _ = events.send(ScannerEvent::SizePartial {
-                path: job.repo.clone(),
-                size_bytes: git_size,
-                untracked_size_bytes: total,
-            });
-        }
-        total
-    });
+    let untracked = crate::engine::deep_clean_candidates(repo, keep, &sys)
+        .ok()
+        .map(|paths| {
+            let mut total = 0u64;
+            for path in paths {
+                total += sys.get_size(&repo.join(&path)).unwrap_or(0);
+                let _ = events.send(ScannerEvent::SizePartial {
+                    path: job.repo.clone(),
+                    size_bytes: git_size,
+                    untracked_size_bytes: total,
+                });
+            }
+            total
+        });
 
     let worktree_sizes: HashMap<String, Option<u64>> = job
         .linked_worktrees
@@ -153,4 +168,41 @@ fn measure(job: &SizeJob, keep: &[String], events: &Sender<ScannerEvent>) {
         untracked_size_bytes: untracked,
         worktree_sizes,
     });
+}
+
+#[cfg(test)]
+mod bench {
+    /// `SLOTH_BENCH_DIR=... cargo test --release worker::bench -- --ignored --nocapture`
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
+    async fn bench_pipeline() {
+        use crate::ui::ScannerEvent;
+        let Some(dir) = std::env::var_os("SLOTH_BENCH_DIR") else {
+            return;
+        };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker = super::Worker::new(tx, crate::config::Config::default().deep_clean_keep);
+        let start = std::time::Instant::now();
+        worker.scan(dir.into(), crate::config::Config::default().scan_exclude);
+        let (mut found, mut sized, mut analysis_done) = (0, 0, false);
+        loop {
+            match rx.recv_timeout(std::time::Duration::from_secs(120)) {
+                Ok(ScannerEvent::RepoFound(_)) => found += 1,
+                Ok(ScannerEvent::ScanComplete) => {
+                    println!("scan complete: {:?} ({found} repos)", start.elapsed())
+                }
+                Ok(ScannerEvent::AnalysisComplete) => {
+                    analysis_done = true;
+                    println!("analysis complete: {:?}", start.elapsed());
+                }
+                Ok(ScannerEvent::SizeComputed { .. }) => sized += 1,
+                Ok(_) => {}
+                Err(_) => break,
+            }
+            if analysis_done && sized == found {
+                println!("sizes complete: {:?}", start.elapsed());
+                break;
+            }
+        }
+    }
 }

@@ -1,6 +1,6 @@
 //! On-demand git queries run off the UI thread; results come back as events.
 
-use crate::sys::{GitExecutor as _, RealSystem};
+use crate::sys::RealSystem;
 use crate::ui::ScannerEvent;
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
@@ -50,8 +50,6 @@ pub fn load_diff(tx: &Sender<ScannerEvent>, id: u64, repo: PathBuf, target: Diff
 pub fn load_deep_clean_preview(tx: &Sender<ScannerEvent>, repos: Vec<PathBuf>, keep: Vec<String>) {
     let tx = tx.clone();
     std::thread::spawn(move || {
-        let args = crate::engine::deep_clean_args(true, &keep);
-        let args: Vec<&str> = args.iter().map(String::as_str).collect();
         let mut preview: Vec<String> = Vec::new();
         for path in &repos {
             let label = path
@@ -59,9 +57,9 @@ pub fn load_deep_clean_preview(tx: &Sender<ScannerEvent>, repos: Vec<PathBuf>, k
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            match RealSystem.run_git_command(path, &args) {
+            match crate::engine::deep_clean_candidates(path, &keep, &RealSystem) {
                 Ok(out) => {
-                    for entry in crate::engine::deep_clean_paths(&out) {
+                    for entry in out {
                         preview.push(format!("[{}] {}", label, entry));
                     }
                 }

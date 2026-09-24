@@ -210,8 +210,9 @@ async fn run(
             }
         }
         Operation::DeepClean { keep } => {
-            let preview = git(deep_clean_args(true, keep)).await.unwrap_or_default();
-            let freed: u64 = deep_clean_paths(&preview)
+            let freed: u64 = deep_clean_candidates(repo, keep, sys)
+                .unwrap_or_default()
+                .iter()
                 .map(|p| sys.get_size(&repo.join(p)).unwrap_or(0))
                 .sum();
             let outcome = git(deep_clean_args(false, keep))
@@ -237,6 +238,58 @@ pub fn deep_clean_args(dry_run: bool, keep: &[String]) -> Vec<String> {
         args.push(pattern.clone());
     }
     args
+}
+
+/// What a deep clean would remove, relative to the repository: ignored and
+/// untracked paths (whole directories collapsed to `dir/`), minus `keep`
+/// matches and nested repositories.
+///
+/// Uses `git ls-files --directory`, which does not descend into ignored
+/// directories: `git clean -n` does, and can take minutes on a
+/// `node_modules` containing a junction back to the repository.
+pub fn deep_clean_candidates(
+    repo: &Path,
+    keep: &[String],
+    sys: &(impl GitExecutor + FileSystem),
+) -> std::io::Result<Vec<String>> {
+    let base = [
+        "ls-files",
+        "-z",
+        "--others",
+        "--exclude-standard",
+        "--directory",
+    ];
+    let untracked = sys.run_git_command(repo, &base)?;
+    let mut with_ignored = base.to_vec();
+    with_ignored.push("--ignored");
+    let ignored = sys.run_git_command(repo, &with_ignored)?;
+
+    let mut paths: Vec<String> = untracked
+        .split('\0')
+        .chain(ignored.split('\0'))
+        .filter(|p| !p.is_empty())
+        .filter(|p| !is_kept(p, keep))
+        .filter(|p| !(p.ends_with('/') && sys.is_repository(&repo.join(p))))
+        .map(str::to_string)
+        .collect();
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
+/// Whether `path` (a `dir/` or a file) matches a `deep_clean_keep` pattern.
+/// Patterns match the last path component; a trailing `/` only matches directories.
+fn is_kept(path: &str, keep: &[String]) -> bool {
+    let is_dir = path.ends_with('/');
+    let name = path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(path);
+    keep.iter().any(|pattern| match pattern.strip_suffix('/') {
+        Some(dir_pattern) => is_dir && crate::config::glob_match(dir_pattern, name),
+        None => crate::config::glob_match(pattern, name),
+    })
 }
 
 /// Paths listed by `git clean` ("Would remove x" / "Removing x").
@@ -387,25 +440,77 @@ mod tests {
     async fn deep_clean_reports_freed_space() {
         let mut mock = MockSystem::new();
         let path = PathBuf::from("/fake/repo");
-        mock.add_command_output(
-            &path,
-            &["clean", "-x", "-d", "-n", "-e", ".env"],
-            Ok("Would remove build/\nWould remove dist/\n".into()),
-        );
+        mock_listing(&mut mock, &path, "notes.txt\0", "build/\0dist/\0.env\0");
         mock.add_command_output(
             &path,
             &["clean", "-x", "-d", "-f", "-e", ".env"],
-            Ok("Removing build/\nRemoving dist/\n".into()),
+            Ok("Removing build/\nRemoving dist/\nRemoving notes.txt\n".into()),
         );
         mock.file_sizes.insert(path.join("build/"), 500);
         mock.file_sizes.insert(path.join("dist/"), 20);
+        mock.file_sizes.insert(path.join("notes.txt"), 3);
+        mock.file_sizes.insert(path.join(".env"), 1_000);
 
         let op = Operation::DeepClean {
             keep: vec![".env".into()],
         };
         let results = execute(plan(vec![op]), false, mock, None).await;
-        assert_eq!(results[0].outcome.as_deref(), Ok("removed 2 path(s)"));
-        assert_eq!(results[0].freed_bytes, 520);
+        assert_eq!(results[0].outcome.as_deref(), Ok("removed 3 path(s)"));
+        assert_eq!(results[0].freed_bytes, 523);
+    }
+
+    fn mock_listing(mock: &mut MockSystem, path: &Path, untracked: &str, ignored: &str) {
+        let base = [
+            "ls-files",
+            "-z",
+            "--others",
+            "--exclude-standard",
+            "--directory",
+        ];
+        mock.add_command_output(path, &base, Ok(untracked.into()));
+        let mut with_ignored = base.to_vec();
+        with_ignored.push("--ignored");
+        mock.add_command_output(path, &with_ignored, Ok(ignored.into()));
+    }
+
+    #[test]
+    fn candidates_skip_kept_files_and_nested_repositories() {
+        let mut mock = MockSystem::new();
+        let path = PathBuf::from("/r");
+        mock_listing(
+            &mut mock,
+            &path,
+            "nested/\0draft.md\0",
+            "node_modules/\0.env.local\0.idea/\0sub/.vscode/\0.vscode\0",
+        );
+        mock.repositories.push(path.join("nested/"));
+        let keep = crate::config::Config::default().deep_clean_keep;
+        let candidates = deep_clean_candidates(&path, &keep, &mock).unwrap();
+        // `.vscode/` only protects directories, so a `.vscode` file goes.
+        assert_eq!(candidates, vec![".vscode", "draft.md", "node_modules/"]);
+    }
+
+    /// The listing matches what a real deep clean removes.
+    #[test]
+    fn candidates_match_real_git_clean() {
+        let repo = crate::test_support::TempRepo::new("candidates");
+        repo.commit(".gitignore", "build/\n*.log\n");
+        std::fs::create_dir_all(repo.path.join("build/deep")).unwrap();
+        std::fs::write(repo.path.join("build/deep/out.bin"), "x").unwrap();
+        std::fs::write(repo.path.join("debug.log"), "x").unwrap();
+        std::fs::write(repo.path.join("scratch.txt"), "x").unwrap();
+        std::fs::write(repo.path.join(".env"), "x").unwrap();
+
+        let keep = vec![".env".to_string()];
+        let candidates = deep_clean_candidates(&repo.path, &keep, &crate::sys::RealSystem).unwrap();
+        assert_eq!(candidates, vec!["build/", "debug.log", "scratch.txt"]);
+
+        let args = deep_clean_args(true, &keep);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let dry_run = repo.git(&args);
+        let mut listed: Vec<&str> = deep_clean_paths(&dry_run).collect();
+        listed.sort();
+        assert_eq!(listed, candidates);
     }
 
     /// Nested repositories and kept files survive a real deep clean.
