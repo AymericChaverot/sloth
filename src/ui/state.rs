@@ -321,6 +321,8 @@ pub struct AppState {
     pub root: PathBuf,
     /// Cleanup running (or just finished) inside the TUI.
     pub execution: Option<Execution>,
+    /// Where deletions are recorded for `sloth restore` (none in tests).
+    pub journal: Option<crate::journal::Journal>,
 }
 
 impl AppState {
@@ -372,6 +374,7 @@ impl AppState {
             config,
             root,
             execution: None,
+            journal: None,
             pending_action: None,
             confirm_preview_lines: None,
             preview_loading: false,

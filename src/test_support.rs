@@ -6,10 +6,13 @@ use std::process::Command;
 pub struct TempRepo {
     pub path: PathBuf,
     counter: std::cell::Cell<u32>,
+    /// Only the outermost repository deletes its directory.
+    owns_dir: bool,
 }
 
 impl TempRepo {
-    /// Creates an empty repository with `main` as its initial branch.
+    /// Creates an empty repository with `main` as its initial branch in a
+    /// fresh temporary directory, removed on drop.
     pub fn new(name: &str) -> Self {
         let path = std::env::temp_dir().join(format!(
             "sloth-test-{}-{}-{}",
@@ -18,10 +21,18 @@ impl TempRepo {
             crate::git::stats::now_ts()
         ));
         let _ = std::fs::remove_dir_all(&path);
+        let mut repo = Self::at(path);
+        repo.owns_dir = true;
+        repo
+    }
+
+    /// Creates an empty repository at `path` (e.g. nested in another one).
+    pub fn at(path: PathBuf) -> Self {
         std::fs::create_dir_all(&path).expect("create temp repo dir");
         let repo = Self {
             path,
             counter: std::cell::Cell::new(0),
+            owns_dir: false,
         };
         repo.git(&["init", "-q", "-b", "main"]);
         repo
@@ -62,6 +73,8 @@ impl TempRepo {
 
 impl Drop for TempRepo {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
+        if self.owns_dir {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
     }
 }

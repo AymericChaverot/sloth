@@ -266,3 +266,72 @@ fn help_overlay() {
     state.show_help = true;
     insta::assert_snapshot!(render(&mut state, 120, 40));
 }
+
+/// The real pipeline (scan, analysis, sizes) on real repositories, then a
+/// full cleanup through the UI state: every tab must render without panicking.
+#[tokio::test(flavor = "multi_thread")]
+async fn end_to_end_on_real_repositories() {
+    use std::time::{Duration, Instant};
+
+    let workspace = crate::test_support::TempRepo::new("e2e-ws");
+    for name in ["alpha", "beta"] {
+        let repo = crate::test_support::TempRepo::at(workspace.path.join(name));
+        repo.commit("a.txt", "a\n");
+        repo.git(&["checkout", "-q", "-b", "feat/done"]);
+        repo.commit("b.txt", "b\n");
+        repo.git(&["checkout", "-q", "main"]);
+        repo.git(&["merge", "-q", "--no-ff", "feat/done", "-m", "merge"]);
+        std::fs::write(repo.path.join("build.log"), "x".repeat(4096)).unwrap();
+    }
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let worker = crate::worker::Worker::new(tx.clone(), Vec::new());
+    let mut state = AppState::new(Config::default(), workspace.path.clone());
+    worker.scan(workspace.path.clone(), Vec::new());
+
+    // Pump events until the pipeline has settled.
+    let pump = |state: &mut AppState, until: &dyn Fn(&AppState) -> bool| {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !until(state) {
+            assert!(Instant::now() < deadline, "pipeline did not settle");
+            while let Ok(event) = rx.try_recv() {
+                crate::ui::apply_event(state, event, &worker);
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    let settled = |s: &AppState| {
+        !s.is_scanning
+            && !s.is_analyzing
+            && s.repositories.len() == 3
+            && s.repositories
+                .iter()
+                .all(|r| r.analyzed && r.size_finalized)
+    };
+    pump(&mut state, &settled);
+
+    // The workspace itself is a (empty) repository too.
+    assert_eq!(state.totals().cleanable_branches, 2);
+    for tab in Tab::ALL {
+        state.tab = tab;
+        render(&mut state, 120, 30);
+    }
+
+    // Queue everything cleanable and run it inside the UI.
+    state.tab = Tab::Dashboard;
+    press(&mut state, "ax");
+    assert!(state.pending_action.is_some());
+    press(&mut state, "y");
+    let action = state.action.take().expect("confirmed");
+    crate::ui::start_execution(&mut state, action, &tx);
+    pump(&mut state, &|s: &AppState| {
+        s.execution.as_ref().is_some_and(|e| e.finished) && settled(s)
+    });
+
+    let execution = state.execution.as_ref().unwrap();
+    assert_eq!(execution.results.len(), 2);
+    assert_eq!(execution.failed(), 0);
+    assert!(state.selection.is_empty());
+    assert_eq!(state.totals().cleanable_branches, 0);
+    render(&mut state, 120, 30);
+}

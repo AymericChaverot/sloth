@@ -79,6 +79,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let mut state = AppState::new(config, root);
+    state.journal = journal::Journal::open_default();
     if let Some(warning) = config_warning {
         state.warn(format!("{warning} — using defaults"));
     }

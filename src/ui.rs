@@ -109,7 +109,7 @@ pub fn run_tui(
 }
 
 /// Runs the confirmed action in the background; progress comes back as events.
-fn start_execution(state: &mut AppState, action: UiAction, tx: &Sender<ScannerEvent>) {
+pub(crate) fn start_execution(state: &mut AppState, action: UiAction, tx: &Sender<ScannerEvent>) {
     use crate::engine::{Observer, OpResult};
 
     let plans = build_plans(state, action);
@@ -121,7 +121,9 @@ fn start_execution(state: &mut AppState, action: UiAction, tx: &Sender<ScannerEv
         ..Default::default()
     });
 
-    let record = crate::journal::Journal::open_default()
+    let record = state
+        .journal
+        .clone()
         .map(|journal| journal.observer(crate::git::stats::now_ts()));
     let progress = tx.clone();
     let observer: Observer = std::sync::Arc::new(move |result: &OpResult| {
@@ -164,7 +166,11 @@ fn install_panic_hook() {
 }
 
 /// Applies a background event to the state.
-fn apply_event(state: &mut AppState, event: ScannerEvent, worker: &crate::worker::Worker) {
+pub(crate) fn apply_event(
+    state: &mut AppState,
+    event: ScannerEvent,
+    worker: &crate::worker::Worker,
+) {
     let find = |state: &AppState, path: &std::path::Path| {
         state.repositories.iter().position(|r| r.path == path)
     };
