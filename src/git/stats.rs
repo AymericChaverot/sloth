@@ -16,36 +16,38 @@ pub(crate) fn parse_shortstat(stat: &str) -> (usize, usize) {
     (insertions, deletions)
 }
 
-pub(crate) fn get_branch_stats(
+/// Returns `(ahead, behind)` of `branch` relative to `base`, one git call per branch.
+/// Used when git is too old for `%(ahead-behind:...)`.
+pub(crate) fn rev_list_ahead_behind(
     path: &Path,
-    main_branch: &str,
+    base: &str,
     branch: &str,
     sys: &impl crate::sys::GitExecutor,
-) -> (usize, usize, usize, usize) {
-    let mut ahead = 0;
-    let mut behind = 0;
-    let mut insertions = 0;
-    let mut deletions = 0;
-
-    let diff_target = format!("{}...{}", main_branch, branch);
-
-    if let Ok(out_str) =
-        sys.run_git_command(path, &["rev-list", "--left-right", "--count", &diff_target])
-    {
-        let parts: Vec<&str> = out_str.split_whitespace().collect();
-        if parts.len() == 2 {
-            behind = parts[0].parse().unwrap_or(0);
-            ahead = parts[1].parse().unwrap_or(0);
-        }
+) -> (usize, usize) {
+    let range = format!("{}...{}", base, branch);
+    let Ok(out_str) = sys.run_git_command(path, &["rev-list", "--left-right", "--count", &range])
+    else {
+        return (0, 0);
+    };
+    let parts: Vec<&str> = out_str.split_whitespace().collect();
+    if parts.len() == 2 {
+        let behind = parts[0].parse().unwrap_or(0);
+        let ahead = parts[1].parse().unwrap_or(0);
+        (ahead, behind)
+    } else {
+        (0, 0)
     }
+}
 
-    if let Ok(out_str) = sys.run_git_command(path, &["diff", "--shortstat", &diff_target]) {
-        let (i, d) = parse_shortstat(&out_str);
-        insertions = i;
-        deletions = d;
-    }
-
-    (ahead, behind, insertions, deletions)
+/// Returns `(insertions, deletions)` for a diff range such as `main...feature`.
+pub(crate) fn diff_shortstat(
+    path: &Path,
+    range: &str,
+    sys: &impl crate::sys::GitExecutor,
+) -> (usize, usize) {
+    sys.run_git_command(path, &["diff", "--shortstat", range])
+        .map(|out| parse_shortstat(&out))
+        .unwrap_or((0, 0))
 }
 
 // Note: abstracting directory traversal natively into the trait is slightly more complex,
@@ -70,9 +72,40 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
+pub fn now_ts() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Compact relative age such as `5m`, `3h`, `12d`, `4mo`, `2y`.
+pub fn format_age(ts: i64, now: i64) -> String {
+    let secs = (now - ts).max(0);
+    let (value, unit) = match secs {
+        s if s < 3_600 => (s / 60, "m"),
+        s if s < 86_400 => (s / 3_600, "h"),
+        s if s < 86_400 * 60 => (s / 86_400, "d"),
+        s if s < 86_400 * 365 => (s / (86_400 * 30), "mo"),
+        s => (s / (86_400 * 365), "y"),
+    };
+    format!("{value}{unit}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_format_age() {
+        let now = 1_000_000_000;
+        assert_eq!(format_age(now - 30, now), "0m");
+        assert_eq!(format_age(now - 7_200, now), "2h");
+        assert_eq!(format_age(now - 86_400 * 3, now), "3d");
+        assert_eq!(format_age(now - 86_400 * 90, now), "3mo");
+        assert_eq!(format_age(now - 86_400 * 800, now), "2y");
+        assert_eq!(format_age(now + 50, now), "0m");
+    }
 
     #[test]
     fn test_parse_shortstat_both() {

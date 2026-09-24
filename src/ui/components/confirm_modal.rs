@@ -85,10 +85,21 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
             let mut sorted: Vec<&String> = branches.iter().collect();
             sorted.sort();
             for b in sorted {
-                lines.push(Line::from(Span::styled(
+                let mut spans = vec![Span::styled(
                     format!("  - {}", b),
                     Style::default().fg(theme.error),
-                )));
+                )];
+                if repo
+                    .branches
+                    .iter()
+                    .any(|info| &info.name == b && info.has_unique_commits())
+                {
+                    spans.push(Span::styled(
+                        "  ⚠ has commits not merged nor pushed",
+                        Style::default().fg(theme.primary),
+                    ));
+                }
+                lines.push(Line::from(spans));
             }
             lines.push(Line::raw(""));
         }

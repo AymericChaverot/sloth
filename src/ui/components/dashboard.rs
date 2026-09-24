@@ -22,7 +22,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         total_branches += repo.branches.len();
         total_stashes += repo.stashes.len();
         for branch in &repo.branches {
-            if branch.is_merged {
+            if branch.is_fully_merged() {
                 merged_branches += 1;
             }
         }

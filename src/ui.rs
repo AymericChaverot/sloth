@@ -41,18 +41,9 @@ pub fn run_tui(
             match event {
                 ScannerEvent::RepoFound(path) => {
                     state.scanned_count += 1;
-                    state.repositories.push(crate::git::RepoStatus {
-                        path,
-                        remote_url: None,
-                        branches: Vec::new(),
-                        stashes: Vec::new(),
-                        worktrees: Vec::new(),
-                        graph_lines: None,
-                        analyzed: false,
-                        size_bytes: None,
-                        untracked_size_bytes: None,
-                        size_finalized: false,
-                    });
+                    state
+                        .repositories
+                        .push(crate::git::RepoStatus::pending(path));
                 }
                 ScannerEvent::ScanComplete => state.is_scanning = false,
                 ScannerEvent::RepoAnalyzed(repo) => {
@@ -175,10 +166,10 @@ pub fn run_tui(
                 let b = &repo.branches[state.detail_index];
                 let target = if !b.is_dead && b.upstream.is_some() {
                     b.upstream.clone().unwrap()
-                } else if repo.branches.iter().any(|b| b.name == "main") {
-                    "main".to_string()
                 } else {
-                    "master".to_string()
+                    repo.default_branch
+                        .clone()
+                        .unwrap_or_else(|| "HEAD".to_string())
                 };
                 let diff_target = format!("{}...{}", target, b.name);
                 if let Ok(diff) = crate::git::commands::get_branch_diff(

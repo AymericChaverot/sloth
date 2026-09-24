@@ -79,14 +79,17 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 ),
             ];
 
-            if let Some(ref date) = branch.last_commit_date {
+            if let Some(ts) = branch.last_commit_ts {
                 spans.push(Span::styled(
-                    format!(" ({})", date),
+                    format!(
+                        " ({} ago)",
+                        crate::git::stats::format_age(ts, crate::git::stats::now_ts())
+                    ),
                     Style::default().fg(theme.secondary),
                 ));
             }
 
-            if branch.is_merged {
+            if branch.is_fully_merged() {
                 spans.push(Span::styled(" (Merged)", Style::default().fg(theme.merged)));
             }
 

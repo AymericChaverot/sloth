@@ -173,7 +173,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                 let repo = &state.repositories[state.repo_index];
                 let set = state.selected_branches.entry(state.repo_index).or_default();
                 for branch in &repo.branches {
-                    if branch.is_dead || branch.is_merged {
+                    if branch.is_dead || branch.is_fully_merged() {
                         set.insert(branch.name.clone());
                     }
                 }

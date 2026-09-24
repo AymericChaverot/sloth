@@ -97,6 +97,18 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                     ),
                     ratatui::text::Span::raw(repo.path.display().to_string()),
                 ];
+                if let Some(branch) = &repo.current_branch {
+                    content_spans.push(ratatui::text::Span::styled(
+                        format!(" ({})", branch),
+                        Style::default().fg(theme.secondary),
+                    ));
+                }
+                if repo.is_dirty {
+                    content_spans.push(ratatui::text::Span::styled(
+                        " ●",
+                        Style::default().fg(theme.primary),
+                    ));
+                }
                 let spinner = crate::ui::SPINNER;
                 let frame = spinner[(state.loader_tick / 4) % spinner.len()];
                 match (repo.size_bytes, repo.size_finalized) {
