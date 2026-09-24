@@ -1,9 +1,11 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 mod cleanup;
+mod cli;
 mod config;
 mod engine;
 mod git;
+mod journal;
 mod scanner;
 mod sys;
 mod ui;
@@ -19,13 +21,32 @@ use crate::ui::AppState;
 struct Args {
     /// The root directory to scan for Git repositories
     /// [default: `default_path` from the config file, or the current directory]
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     path: Option<String>,
+
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Restore branches and stashes deleted by sloth (lists them without arguments)
+    Restore {
+        /// Journal entry ids to restore
+        ids: Vec<usize>,
+        /// Restore everything deleted by the last cleanup run
+        #[arg(long, conflicts_with = "ids")]
+        last: bool,
+    },
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    if let Some(Command::Restore { ids, last }) = &args.command {
+        return cli::restore(ids, *last);
+    }
+
     let (config, config_warning) = config::Config::load();
     if let Some(warning) = config_warning {
         eprintln!("⚠ {warning} — using defaults.");
@@ -157,8 +178,16 @@ async fn main() -> anyhow::Result<()> {
                 count,
                 plans.len()
             );
-            let results = engine::execute(plans, false, sys::RealSystem, None).await;
+            let observer =
+                journal::Journal::open_default().map(|j| j.observer(git::stats::now_ts()));
+            let results = engine::execute(plans, false, sys::RealSystem, observer).await;
             print_results(&results);
+            if results
+                .iter()
+                .any(|r| journal::Entry::from_result(0, r).is_some())
+            {
+                println!("Deleted branches and stashes can be restored with `sloth restore`.");
+            }
         }
         Some(_) => println!("Nothing selected."),
         None => println!("No action executed."),
