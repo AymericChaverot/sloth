@@ -7,6 +7,7 @@ pub mod graph;
 pub mod header;
 pub mod help;
 pub mod repositories;
+pub mod tabs;
 
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 

@@ -70,11 +70,6 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Style::default().fg(theme.text_normal),
             ),
         ]),
-        ratatui::text::Line::from(""),
-        ratatui::text::Line::from(ratatui::text::Span::styled(
-            "Use Left/Right arrows or 'd' to exit the dashboard.",
-            Style::default().fg(theme.text_dimmed),
-        )),
     ];
 
     let block = Block::default()

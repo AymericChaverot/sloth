@@ -1,45 +1,103 @@
-use crate::ui::state::{AppState, Focus};
+use crate::ui::keymap;
+use crate::ui::state::{AppState, ToastLevel};
 use ratatui::{
     Frame,
-    layout::Rect,
-    widgets::{Block, Borders, Paragraph},
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
-pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+/// Bottom line: context key hints on the left; toast or queue size on the right.
+pub fn render_status_bar(f: &mut Frame, state: &AppState, area: Rect) {
     let theme = crate::ui::theme::get_theme(state.theme_index);
-    let mut help_text = match state.focus {
-        Focus::Repositories => {
-            "Repos: Up/Down navigate. Space select. X deep clean. 'p'/'c' prune/gc. 'd' dashboard. '/' search. 't' theme. 'q' quit."
-                .to_string()
-        }
-        Focus::Details => {
-            "Details: Up/Down navigate. Space select. 'a' smart-select, 'A' select all, Esc deselect. Enter clean. 'v' diff. 'g' graph. Left back."
-                .to_string()
-        }
-        Focus::GitGraph => {
-            "Graph: Arrows scroll. 'f'/'m' fullscreen. 't' theme. 'Esc'/'g' back. 'q' quit.".to_string()
-        }
-        Focus::Dashboard => {
-            "Dashboard: 'q' quit. Left/Right/'d' to exit.".to_string()
-        }
+    let key = Style::default().fg(theme.primary);
+    let desc = Style::default().fg(theme.text_dimmed);
+
+    let right = if let Some(toast) = &state.toast {
+        let color = match toast.level {
+            ToastLevel::Info => theme.success,
+            ToastLevel::Warning => theme.error,
+        };
+        Line::from(Span::styled(
+            format!(" {} ", toast.message),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ))
+    } else if !state.selection.is_empty() {
+        let (b, s, w) = state.selection.counts();
+        Line::from(vec![
+            Span::styled(format!("Queue ({}): ", state.selection.len()), desc),
+            Span::styled(
+                format!("{b} branches · {s} stashes · {w} worktrees"),
+                Style::default().fg(theme.merged),
+            ),
+            Span::styled(
+                format!(" in {} repos  (x run) ", state.selection.repo_count()),
+                desc,
+            ),
+        ])
+    } else {
+        Line::default()
     };
-    if !state.selection.is_empty() {
-        help_text = format!(
-            "Queue: {} item(s) in {} repo(s) — Enter review & run, 'C' clear  |  {}",
-            state.selection.len(),
-            state.selection.repo_count(),
-            help_text
-        );
+
+    let mut left = Vec::new();
+    if state.is_searching {
+        left.push(Span::styled("Filter: ", key));
+        left.push(Span::raw(format!("{}▏", state.search_query)));
+        left.push(Span::styled("  Enter/Esc done", desc));
+    } else {
+        for (k, d) in keymap::hints(state) {
+            left.push(Span::styled(format!(" {k}"), key));
+            left.push(Span::styled(format!(" {d} "), desc));
+        }
     }
-    if let Some(ref ver) = state.update_available {
-        help_text = format!(
-            "🔄 Update available: {} — press 'u' to update  |  {}",
-            ver, help_text
-        );
+
+    let [left_area, right_area] =
+        Layout::horizontal([Constraint::Min(0), Constraint::Length(right.width() as u16)])
+            .areas(area);
+    f.render_widget(Paragraph::new(Line::from(left)), left_area);
+    f.render_widget(
+        Paragraph::new(right).alignment(Alignment::Right),
+        right_area,
+    );
+}
+
+/// Full key reference, toggled with `?`.
+pub fn render_overlay(f: &mut Frame, state: &AppState, area: Rect) {
+    if !state.show_help {
+        return;
     }
-    let title = format!("Help (Theme: {})", theme.name);
-    let details_footer = Paragraph::new(help_text)
-        .style(ratatui::style::Style::default().fg(theme.text_dimmed))
-        .block(Block::default().borders(Borders::ALL).title(title));
-    f.render_widget(details_footer, area);
+    let theme = crate::ui::theme::get_theme(state.theme_index);
+    let mut lines = Vec::new();
+    for (title, bindings) in keymap::SECTIONS {
+        lines.push(Line::from(Span::styled(
+            *title,
+            Style::default()
+                .fg(theme.secondary)
+                .add_modifier(Modifier::BOLD),
+        )));
+        for (key, desc) in *bindings {
+            lines.push(Line::from(vec![
+                Span::styled(format!("  {key:<12}"), Style::default().fg(theme.primary)),
+                Span::raw(*desc),
+            ]));
+        }
+        lines.push(Line::raw(""));
+    }
+    lines.push(Line::from(Span::styled(
+        "Deleted branches and stashes can be restored with `sloth restore`.",
+        Style::default().fg(theme.text_dimmed),
+    )));
+
+    let area = super::centered_rect(60, 85, area);
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .title(" Keys — ? or Esc to close ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.secondary)),
+        ),
+        area,
+    );
 }

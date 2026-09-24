@@ -1,0 +1,24 @@
+---
+source: src/ui/tests.rs
+expression: "render(&mut state, 120, 20)"
+---
+"🦥 sloth v0.1.0  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branches                   [Default]" Hidden by multi-width symbols: [(1, " ")]
+" 1 Repos │ 2 Dashboard                                                                                                  "
+"┌Repositories (3)──────────────────────────────▲┌Details (Branches, Stashes, Worktrees) [1 branch(es), 0 stash(es), 0 w▲"
+"│>> [ ] api (main) ● [.git 48.0 MB · 310.0 MB u█│--- Branches ---                                                      ║"
+"│   [ ] web (main) [.git 120.0 MB · 1.2 GB untr█│   🔒  main (1d ago) [default branch] (Up to date with upstream)      █" Hidden by multi-width symbols: [(53, " ")]
+"│   [ ] docs (main) [⠋]                        █│>> [x] feat/login (DEAD) (3mo ago) (Merged) ↑0 ↓12 (+0 -0)            █"
+"│                                              █│   [ ] wip/cache (2d ago) (Local)                                     █"
+"│                                              █│   [ ] fix/typo (6mo ago) (Squash-merged) (Local)                     █"
+"│                                              █│--- Stashes ---                                                       █"
+"│                                              █│   [ ] WIP on main: try new cache                                     █"
+"│                                              █│--- Worktrees ---                                                     █"
+"│                                              █│   🔒  /work/api [main]                                               █" Hidden by multi-width symbols: [(53, " ")]
+"│                                              █│   [ ] /work/api-hotfix [hotfix]                                      █"
+"│                                              █│                                                                      █"
+"│                                              █│                                                                      ║"
+"│                                              █│                                                                      ║"
+"│                                              █│                                                                      ║"
+"│                                              ║│                                                                      ║"
+"└──────────────────────────────────────────────▼└──────────────────────────────────────────────────────────────────────▼"
+" Space select  a smart  v diff  x run queue  ← back Queue (1): 1 branches · 0 stashes · 0 worktrees in 1 repos  (x run) "

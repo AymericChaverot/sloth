@@ -41,6 +41,20 @@ pub enum ScannerEvent {
     ExecutionFinished,
 }
 
+/// Aggregates over every analyzed repository.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Totals {
+    pub git_bytes: u64,
+    pub untracked_bytes: u64,
+    pub branches: usize,
+    pub merged_branches: usize,
+    pub gone_branches: usize,
+    /// Branches that smart selection would pick.
+    pub cleanable_branches: usize,
+    pub stashes: usize,
+    pub linked_worktrees: usize,
+}
+
 /// Progress and results of a cleanup run.
 #[derive(Debug, Default)]
 pub struct Execution {
@@ -67,13 +81,58 @@ impl Execution {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tab {
+    Repos,
+    Dashboard,
+}
+
+impl Tab {
+    pub const ALL: [Tab; 2] = [Tab::Repos, Tab::Dashboard];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Tab::Repos => "Repos",
+            Tab::Dashboard => "Dashboard",
+        }
+    }
+
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|t| *t == self).unwrap_or(0)
+    }
+
+    pub fn next(self) -> Tab {
+        Self::ALL[(self.index() + 1) % Self::ALL.len()]
+    }
+
+    pub fn previous(self) -> Tab {
+        Self::ALL[(self.index() + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+}
+
+/// Focused pane of the Repos tab.
 #[derive(PartialEq, Debug)]
 pub enum Focus {
     Repositories,
     Details,
     GitGraph,
-    Dashboard,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastLevel {
+    Info,
+    Warning,
+}
+
+/// A short message shown in the status bar for a few seconds.
+#[derive(Debug, Clone)]
+pub struct Toast {
+    pub message: String,
+    pub level: ToastLevel,
+    pub shown_at: std::time::Instant,
+}
+
+const TOAST_DURATION: std::time::Duration = std::time::Duration::from_secs(4);
 
 #[derive(Debug, Clone)]
 pub enum UiAction {
@@ -85,6 +144,9 @@ pub enum UiAction {
 
 pub struct AppState {
     pub repositories: Vec<RepoStatus>,
+    pub tab: Tab,
+    pub show_help: bool,
+    pub toast: Option<Toast>,
     pub focus: Focus,
     pub repo_index: usize,
     pub detail_index: usize,
@@ -136,6 +198,9 @@ impl AppState {
 
         Self {
             repositories: Vec::new(),
+            tab: Tab::Repos,
+            show_help: false,
+            toast: None,
             focus: Focus::Repositories,
             repo_index: 0,
             detail_index: 0,
@@ -172,6 +237,55 @@ impl AppState {
             confirm_preview_lines: None,
             preview_loading: false,
         }
+    }
+
+    pub fn totals(&self) -> Totals {
+        let mut t = Totals::default();
+        for repo in &self.repositories {
+            t.git_bytes += repo.size_bytes.unwrap_or(0);
+            t.untracked_bytes += repo.untracked_size_bytes.unwrap_or(0);
+            t.branches += repo.branches.len();
+            t.stashes += repo.stashes.len();
+            t.linked_worktrees += repo.worktrees.iter().filter(|w| !w.is_main).count();
+            for branch in &repo.branches {
+                t.merged_branches += usize::from(branch.is_fully_merged());
+                t.gone_branches += usize::from(branch.is_dead);
+                t.cleanable_branches += usize::from(crate::cleanup::is_smart_candidate(
+                    repo,
+                    branch,
+                    &self.config,
+                ));
+            }
+        }
+        t
+    }
+
+    pub fn notify(&mut self, message: impl Into<String>) {
+        self.show_toast(message, ToastLevel::Info);
+    }
+
+    pub fn warn(&mut self, message: impl Into<String>) {
+        self.show_toast(message, ToastLevel::Warning);
+    }
+
+    fn show_toast(&mut self, message: impl Into<String>, level: ToastLevel) {
+        self.toast = Some(Toast {
+            message: message.into(),
+            level,
+            shown_at: std::time::Instant::now(),
+        });
+    }
+
+    /// Drops an expired toast; returns whether the screen must be redrawn.
+    pub fn expire_toast(&mut self) -> bool {
+        let expired = self
+            .toast
+            .as_ref()
+            .is_some_and(|t| t.shown_at.elapsed() >= TOAST_DURATION);
+        if expired {
+            self.toast = None;
+        }
+        expired
     }
 
     /// Path relative to the scanned directory (the directory name for the root itself).

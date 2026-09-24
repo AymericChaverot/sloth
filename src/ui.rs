@@ -5,7 +5,7 @@ use crossterm::{
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Layout},
 };
 use std::io::{self, stdout};
 use std::path::PathBuf;
@@ -14,10 +14,14 @@ use std::time::Duration;
 
 pub mod components;
 pub mod events;
+pub mod keymap;
 pub mod loader;
 pub mod selection;
 pub mod state;
 pub mod theme;
+
+#[cfg(test)]
+mod tests;
 
 pub use state::{AppState, ScannerEvent, UiAction};
 
@@ -52,6 +56,9 @@ pub fn run_tui(
             dirty = true;
         }
         request_loads(&mut state, &tx);
+        if state.expire_toast() {
+            dirty = true;
+        }
 
         let animating = state.is_animating();
         if dirty || animating {
@@ -306,76 +313,50 @@ fn request_loads(state: &mut AppState, tx: &Sender<ScannerEvent>) {
     }
 }
 
-fn draw(f: &mut Frame, state: &mut AppState) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints(
-            [
-                Constraint::Length(7),
-                Constraint::Min(10),
-                Constraint::Length(3),
-            ]
-            .as_ref(),
-        )
-        .split(f.area());
+pub(crate) fn draw(f: &mut Frame, state: &mut AppState) {
+    let [header, tabs, body, status] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(5),
+        Constraint::Length(1),
+    ])
+    .areas(f.area());
 
-    // Header (rainbow ASCII art)
-    components::header::render(f, state, chunks[0]);
-
-    // Main content panes
-    let main_chunks = if state.graph_maximized {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(100)].as_ref())
-            .split(chunks[1])
-    } else if state.show_graph {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(
-                [
-                    Constraint::Percentage(30),
-                    Constraint::Percentage(30),
-                    Constraint::Percentage(40),
-                ]
-                .as_ref(),
-            )
-            .split(chunks[1])
-    } else {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)].as_ref())
-            .split(chunks[1])
-    };
-
-    if state.focus == state::Focus::Dashboard {
-        components::dashboard::render(f, state, chunks[1]);
-    } else {
-        if !state.graph_maximized {
-            components::repositories::render(f, state, main_chunks[0]);
-            components::details::render(f, state, main_chunks[1]);
-        }
-
-        if state.show_graph || state.graph_maximized {
-            let target_chunk = if state.graph_maximized {
-                main_chunks[0]
-            } else {
-                main_chunks[2]
-            };
-            components::graph::render(f, state, target_chunk);
-        }
+    components::header::render(f, state, header);
+    components::tabs::render(f, state, tabs);
+    match state.tab {
+        state::Tab::Repos => draw_repos_tab(f, state, body),
+        state::Tab::Dashboard => components::dashboard::render(f, state, body),
     }
+    components::help::render_status_bar(f, state, status);
 
-    // Help bar
-    components::help::render(f, state, chunks[2]);
-
-    // Diff Modal Overlay (if open)
+    // Overlays, from least to most important.
     components::diff_modal::render(f, state, f.area());
-
-    // Confirm Modal Overlay (if a pending action awaits confirmation)
     components::confirm_modal::render(f, state, f.area());
-
     components::execution_modal::render(f, state, f.area());
+    components::help::render_overlay(f, state, f.area());
+}
+
+fn draw_repos_tab(f: &mut Frame, state: &mut AppState, area: ratatui::layout::Rect) {
+    if state.graph_maximized {
+        components::graph::render(f, state, area);
+        return;
+    }
+    let constraints = if state.show_graph {
+        vec![
+            Constraint::Percentage(30),
+            Constraint::Percentage(30),
+            Constraint::Percentage(40),
+        ]
+    } else {
+        vec![Constraint::Percentage(40), Constraint::Percentage(60)]
+    };
+    let panes = Layout::horizontal(constraints).split(area);
+    components::repositories::render(f, state, panes[0]);
+    components::details::render(f, state, panes[1]);
+    if state.show_graph {
+        components::graph::render(f, state, panes[2]);
+    }
 }
 
 /// Turns the confirmed action and the current selection into engine plans.
