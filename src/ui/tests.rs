@@ -232,5 +232,5 @@ fn dashboard_tab() {
 fn help_overlay() {
     let mut state = fixture_state();
     state.show_help = true;
-    insta::assert_snapshot!(render(&mut state, 100, 45));
+    insta::assert_snapshot!(render(&mut state, 120, 40));
 }

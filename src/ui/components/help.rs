@@ -61,36 +61,52 @@ pub fn render_overlay(f: &mut Frame, state: &AppState, area: Rect) {
         return;
     }
     let theme = crate::ui::theme::get_theme(state.theme_index);
-    let mut lines = Vec::new();
-    for (title, bindings) in keymap::SECTIONS {
-        lines.push(Line::from(Span::styled(
-            *title,
+    let section = |&(title, bindings): &(&'static str, &'static [keymap::Binding])| {
+        let mut lines = vec![Line::from(Span::styled(
+            title,
             Style::default()
                 .fg(theme.secondary)
                 .add_modifier(Modifier::BOLD),
-        )));
-        for (key, desc) in *bindings {
+        ))];
+        for (key, desc) in bindings {
             lines.push(Line::from(vec![
                 Span::styled(format!("  {key:<12}"), Style::default().fg(theme.primary)),
                 Span::raw(*desc),
             ]));
         }
         lines.push(Line::raw(""));
+        lines
+    };
+
+    // Two balanced columns of sections.
+    let total: usize = keymap::SECTIONS.iter().map(|(_, b)| b.len() + 2).sum();
+    let (mut left, mut right) = (Vec::new(), Vec::new());
+    for s in keymap::SECTIONS {
+        if left.len() < total / 2 {
+            left.extend(section(s));
+        } else {
+            right.extend(section(s));
+        }
     }
-    lines.push(Line::from(Span::styled(
-        "Deleted branches and stashes can be restored with `sloth restore`.",
+    right.push(Line::from(Span::styled(
+        "Deleted branches and stashes can be",
+        Style::default().fg(theme.text_dimmed),
+    )));
+    right.push(Line::from(Span::styled(
+        "restored with `sloth restore`.",
         Style::default().fg(theme.text_dimmed),
     )));
 
-    let area = super::centered_rect(60, 85, area);
+    let area = super::centered_rect(90, 90, area);
     f.render_widget(Clear, area);
-    f.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }).block(
-            Block::default()
-                .title(" Keys — ? or Esc to close ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.secondary)),
-        ),
-        area,
-    );
+    let block = Block::default()
+        .title(" Keys — ? or Esc to close ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.secondary));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    let [left_area, right_area] =
+        Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).areas(inner);
+    f.render_widget(Paragraph::new(left).wrap(Wrap { trim: false }), left_area);
+    f.render_widget(Paragraph::new(right).wrap(Wrap { trim: false }), right_area);
 }
