@@ -107,7 +107,7 @@ async fn analyze_all(root: &Path, config: &Config) -> Vec<RepoStatus> {
     if interactive {
         eprint!("\r\x1b[2K");
     }
-    repos.sort_by(|a, b| a.path.cmp(&b.path));
+    repos.sort_by(|a, b| crate::ui::views::alphabetical(&a.path, &b.path));
     repos
 }
 

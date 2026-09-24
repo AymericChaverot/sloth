@@ -177,7 +177,7 @@ pub enum RepoSort {
 impl RepoSort {
     pub fn label(self) -> &'static str {
         match self {
-            RepoSort::Path => "path",
+            RepoSort::Path => "name (A-Z)",
             RepoSort::Cleanable => "cleanable branches",
             RepoSort::Reclaimable => "reclaimable space",
             RepoSort::GitSize => ".git size",

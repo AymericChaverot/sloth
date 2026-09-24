@@ -25,7 +25,7 @@ pub const REPOS: &[Binding] = &[
     ("c", "garbage collect"),
     ("X", "deep clean untracked & ignored files"),
     ("/", "filter by path or remote"),
-    ("s", "cycle sort (path, cleanable, reclaimable, .git)"),
+    ("s", "cycle sort (name, cleanable, reclaimable, .git)"),
     ("Esc", "clear filter, then marks"),
     ("g", "toggle graph"),
 ];

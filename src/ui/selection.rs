@@ -157,8 +157,10 @@ impl Selection {
     }
 
     /// Engine plans for the whole selection. Protected items are filtered out.
+    /// Plans are in alphabetical order of repository.
     pub fn plans(&self, repos: &[RepoStatus], config: &Config) -> Vec<RepoPlan> {
-        self.repos
+        let mut plans: Vec<RepoPlan> = self
+            .repos
             .iter()
             .filter_map(|(path, sel)| {
                 let repo = repos.iter().find(|r| &r.path == path)?;
@@ -174,7 +176,9 @@ impl Selection {
                     operations,
                 })
             })
-            .collect()
+            .collect();
+        plans.sort_by(|a, b| crate::ui::views::alphabetical(&a.repo, &b.repo));
+        plans
     }
 }
 

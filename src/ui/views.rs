@@ -6,6 +6,12 @@ use crate::git::models::{BranchInfo, StashInfo, WorktreeInfo};
 use crate::ui::selection::ItemKind;
 use crate::ui::state::{AppState, BranchFilter, BranchSort, RepoSort};
 
+/// Alphabetical order of paths, ignoring case (`acgames` before `Sentinelle`).
+pub fn alphabetical(a: &std::path::Path, b: &std::path::Path) -> std::cmp::Ordering {
+    let key = |p: &std::path::Path| p.to_string_lossy().to_lowercase();
+    key(a).cmp(&key(b)).then_with(|| a.cmp(b))
+}
+
 /// Indices into `state.repositories` of the repositories to list, filtered and sorted.
 pub fn visible_repos(state: &AppState) -> Vec<usize> {
     let filter = state.repo_filter.to_lowercase();
@@ -30,7 +36,7 @@ pub fn visible_repos(state: &AppState) -> Vec<usize> {
     let repos = &state.repositories;
     indices.sort_by(|&a, &b| {
         let (ra, rb) = (&repos[a], &repos[b]);
-        let by_path = || ra.path.cmp(&rb.path);
+        let by_path = || alphabetical(&ra.path, &rb.path);
         match state.repo_sort {
             RepoSort::Path => by_path(),
             RepoSort::Cleanable => cleanable_branches(rb, &state.config)
@@ -84,18 +90,23 @@ pub fn branch_rows(state: &AppState) -> Vec<(usize, usize)> {
     let repos = &state.repositories;
     let branch = |&(r, b): &(usize, usize)| &repos[r].branches[b];
     rows.sort_by(|a, b| match state.branch_sort {
-        BranchSort::Repository => repos[a.0]
-            .path
-            .cmp(&repos[b.0].path)
-            .then_with(|| branch(a).name.cmp(&branch(b).name)),
+        BranchSort::Repository => {
+            alphabetical(&repos[a.0].path, &repos[b.0].path).then_with(|| {
+                branch(a)
+                    .name
+                    .to_lowercase()
+                    .cmp(&branch(b).name.to_lowercase())
+            })
+        }
         BranchSort::Oldest => branch(a)
             .last_commit_ts
             .unwrap_or(i64::MAX)
             .cmp(&branch(b).last_commit_ts.unwrap_or(i64::MAX)),
         BranchSort::Name => branch(a)
             .name
-            .cmp(&branch(b).name)
-            .then_with(|| repos[a.0].path.cmp(&repos[b.0].path)),
+            .to_lowercase()
+            .cmp(&branch(b).name.to_lowercase())
+            .then_with(|| alphabetical(&repos[a.0].path, &repos[b.0].path)),
     });
     rows
 }
@@ -115,7 +126,7 @@ pub fn dashboard_rows(state: &AppState) -> Vec<usize> {
     rows.sort_by(|&a, &b| {
         score(&state.repositories[b])
             .cmp(&score(&state.repositories[a]))
-            .then_with(|| state.repositories[a].path.cmp(&state.repositories[b].path))
+            .then_with(|| alphabetical(&state.repositories[a].path, &state.repositories[b].path))
     });
     rows
 }
@@ -197,6 +208,20 @@ mod tests {
         ];
         state.repo_sort = RepoSort::Cleanable;
         assert_eq!(visible_repos(&state), vec![1, 2, 0]);
+    }
+
+    #[test]
+    fn lists_repositories_alphabetically_ignoring_case() {
+        let mut state = AppState::new(crate::config::Config::default(), PathBuf::from("/w"));
+        state.repositories = ["Spectra", "acgames", "Sentinelle", "zenith", "7dd"]
+            .iter()
+            .map(|name| RepoStatus::pending(PathBuf::from("/w").join(name)))
+            .collect();
+        let names: Vec<String> = visible_repos(&state)
+            .into_iter()
+            .map(|i| state.display_path(&state.repositories[i].path))
+            .collect();
+        assert_eq!(names, ["7dd", "acgames", "Sentinelle", "Spectra", "zenith"]);
     }
 
     #[test]

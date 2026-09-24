@@ -98,7 +98,7 @@ pub fn cleanup_operations<'a>(
             Some(_) => false,
         })
         .collect();
-    selected.sort_by(|a, b| a.name.cmp(&b.name));
+    selected.sort_by_key(|b| b.name.to_lowercase());
     operations.extend(selected.iter().map(|b| Operation::DeleteBranch {
         name: b.name.clone(),
         sha: b.sha.clone(),
