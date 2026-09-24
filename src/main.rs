@@ -1,5 +1,6 @@
 use clap::Parser;
 
+mod config;
 mod engine;
 mod git;
 mod scanner;
@@ -16,16 +17,22 @@ use crate::ui::AppState;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// The root directory to scan for Git repositories
-    #[arg(short, long, default_value = ".")]
-    path: String,
+    /// [default: `default_path` from the config file, or the current directory]
+    #[arg(short, long)]
+    path: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    let (config, config_warning) = config::Config::load();
+    if let Some(warning) = config_warning {
+        eprintln!("⚠ {warning} — using defaults.");
+    }
 
     let (tx, rx) = std::sync::mpsc::channel();
-    let path_clone = args.path.clone();
+    let path_clone = config.scan_root(args.path.as_deref());
+    let scan_exclude = config.scan_exclude.clone();
 
     let tx_scanner = tx.clone();
     let tx_update = tx.clone();
@@ -33,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::spawn(async move {
         let tx = tx_scanner;
-        let mut rx_scan = scanner::scan_for_repositories(&path_clone);
+        let mut rx_scan = scanner::scan_for_repositories(&path_clone, scan_exclude);
         let mut git_repos = Vec::new();
 
         // Collect paths
@@ -139,7 +146,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let state = AppState::new();
+    let state = AppState::new(config);
 
     if let Some((paths, action, branches, stashes, worktrees)) = ui::run_tui(state, rx, tx_ui)? {
         let sys = crate::sys::RealSystem;

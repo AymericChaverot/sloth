@@ -202,7 +202,8 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
             }
             KeyCode::Char('t') => {
                 state.theme_index = (state.theme_index + 1) % crate::ui::theme::THEMES.len();
-                crate::ui::theme::save_theme(state.theme_index);
+                let name = crate::ui::theme::get_theme(state.theme_index).name;
+                state.config.save_theme(name);
             }
             KeyCode::Char('v') if state.focus == Focus::Details => {
                 state.diff_modal_open = true;

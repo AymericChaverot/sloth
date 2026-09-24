@@ -74,10 +74,11 @@ pub struct AppState {
     pub pending_action: Option<UiAction>,
     pub confirm_preview_lines: Option<Vec<String>>,
     pub preview_loading: bool,
+    pub config: crate::config::Config,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(config: crate::config::Config) -> Self {
         let mut repo_state = ListState::default();
         repo_state.select(Some(0));
         let mut detail_state = ListState::default();
@@ -110,7 +111,8 @@ impl AppState {
             diff_modal_open: false,
             diff_lines: None,
             diff_scroll: 0,
-            theme_index: crate::ui::theme::load_saved_theme(),
+            theme_index: crate::ui::theme::index_by_name(config.theme.as_deref()),
+            config,
             is_searching: false,
             search_query: String::new(),
             pending_action: None,
@@ -126,7 +128,7 @@ mod tests {
 
     #[test]
     fn test_app_state_initialization() {
-        let state = AppState::new();
+        let state = AppState::new(crate::config::Config::default());
         assert_eq!(state.focus, Focus::Repositories);
         assert_eq!(state.repo_index, 0);
         assert_eq!(state.detail_index, 0);
