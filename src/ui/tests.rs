@@ -221,6 +221,38 @@ fn empty_queue_explains_how_to_fill_it() {
     insta::assert_snapshot!(render(&mut state, 100, 12));
 }
 
+fn click(state: &mut AppState, column: u16, row: u16) {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    crate::ui::events::handle_mouse(
+        state,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        },
+    );
+}
+
+#[test]
+fn mouse_switches_tabs_and_toggles_rows() {
+    let mut state = fixture_state();
+    render(&mut state, 120, 20);
+    let (tab_area, _) = state.layout.tabs[1];
+    click(&mut state, tab_area.x + 2, tab_area.y);
+    assert_eq!(state.tab, Tab::Branches);
+
+    render(&mut state, 120, 20);
+    let table = state.layout.branch_table;
+    click(&mut state, table.x + 2, table.y + 3); // mark column, 2nd row
+    assert!(state.selection.contains(
+        &PathBuf::from("/work/api"),
+        crate::ui::selection::ItemKind::Branch,
+        "fix/typo"
+    ));
+    assert_eq!(state.branch_cursor, 1);
+}
+
 #[test]
 fn dashboard_tab() {
     let mut state = fixture_state();

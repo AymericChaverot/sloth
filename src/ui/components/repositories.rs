@@ -10,6 +10,7 @@ use ratatui::{
 };
 
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+    state.layout.repo_table = area;
     let theme = crate::ui::theme::get_theme(state.theme_index);
     let focused = state.focus == Focus::Repositories;
     let visible = views::visible_repos(state);

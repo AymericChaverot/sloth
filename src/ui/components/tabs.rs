@@ -7,7 +7,7 @@ use ratatui::{
     widgets::Tabs,
 };
 
-pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
+pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let theme = crate::ui::theme::get_theme(state.theme_index);
     let titles: Vec<Line> = Tab::ALL
         .iter()
@@ -29,6 +29,19 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
             Line::from(spans)
         })
         .collect();
+
+    // Click zones: Tabs draws " title " followed by a one-column divider.
+    state.layout.tabs.clear();
+    let mut x = area.x;
+    for (tab, title) in Tab::ALL.iter().zip(&titles) {
+        let width = title.width() as u16 + 2;
+        state
+            .layout
+            .tabs
+            .push((Rect::new(x, area.y, width, 1).intersection(area), *tab));
+        x = x.saturating_add(width + 1);
+    }
+
     let tabs = Tabs::new(titles)
         .select(state.tab.index())
         .style(Style::default().fg(theme.text_normal))

@@ -23,6 +23,8 @@ pub struct Config {
     pub deep_clean_keep: Vec<String>,
     /// Branches whose last commit is older than this many days are "stale".
     pub stale_days: u32,
+    /// Mouse support in the TUI (clicks and wheel). Disable it to select text.
+    pub mouse: bool,
 }
 
 impl Default for Config {
@@ -37,6 +39,7 @@ impl Default for Config {
                 .map(String::from)
                 .to_vec(),
             stale_days: 90,
+            mouse: true,
             deep_clean_keep: [".env", ".env.*", ".idea/", ".vscode/"]
                 .map(String::from)
                 .to_vec(),
@@ -58,6 +61,9 @@ deep_clean_keep = [".env", ".env.*", ".idea/", ".vscode/"]
 
 # Branches whose last commit is older than this many days are "stale".
 stale_days = 90
+
+# Mouse support in the TUI (clicks and wheel). Disable it to select text.
+mouse = true
 
 # Directory names skipped while scanning for repositories.
 scan_exclude = ["node_modules", "target", ".venv", "vendor"]

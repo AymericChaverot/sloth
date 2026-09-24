@@ -2,7 +2,11 @@ use crate::ui::loader::DiffTarget;
 use crate::ui::selection::ItemKind;
 use crate::ui::state::{AppState, Focus, Refresh, Tab, UiAction};
 use crate::ui::views::{self, DetailRow};
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+    MouseEventKind,
+};
+use ratatui::layout::{Position, Rect};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -19,9 +23,128 @@ pub fn handle_events(state: &mut AppState, timeout: Duration) -> std::io::Result
             handle_key(state, key);
             Ok(true)
         }
+        Event::Mouse(mouse) => Ok(handle_mouse(state, mouse)),
         Event::Resize(..) => Ok(true),
         _ => Ok(false),
     }
+}
+
+/// Clicks select rows and tabs (a click in the first column toggles the
+/// row); the wheel moves the cursor of the table under the pointer.
+pub fn handle_mouse(state: &mut AppState, mouse: MouseEvent) -> bool {
+    let pos = Position::new(mouse.column, mouse.row);
+    let key = match mouse.kind {
+        MouseEventKind::ScrollUp => Some(KeyCode::Up),
+        MouseEventKind::ScrollDown => Some(KeyCode::Down),
+        _ => None,
+    };
+
+    // Overlays: only scrolling.
+    if state.execution.is_some() || state.diff_target.is_some() {
+        if let Some(code) = key {
+            handle_key(state, KeyEvent::new(code, KeyModifiers::NONE));
+            return true;
+        }
+        return false;
+    }
+    if state.show_help || state.pending_action.is_some() || state.editing_filter {
+        return false;
+    }
+
+    if let Some(code) = key {
+        if state.tab == Tab::Repos {
+            if state.layout.repo_table.contains(pos) {
+                state.focus = Focus::Repositories;
+            } else if state.layout.detail_table.contains(pos) {
+                state.focus = Focus::Details;
+            }
+        }
+        handle_key(state, KeyEvent::new(code, KeyModifiers::NONE));
+        return true;
+    }
+    if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+        return false;
+    }
+
+    if let Some(&(_, tab)) = state.layout.tabs.iter().find(|(r, _)| r.contains(pos)) {
+        state.tab = tab;
+        return true;
+    }
+    let space = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+    match state.tab {
+        Tab::Repos => {
+            let area = state.layout.repo_table;
+            if let Some(row) = clicked_row(area, state.repo_table.offset(), pos) {
+                let visible = views::visible_repos(state);
+                if let Some(&i) = visible.get(row) {
+                    state.focus = Focus::Repositories;
+                    state.focus_repo(state.repositories[i].path.clone());
+                    if in_mark_column(area, pos) {
+                        handle_key(state, space);
+                    }
+                }
+                return true;
+            }
+            let area = state.layout.detail_table;
+            if let Some(row) = clicked_row(area, state.detail_table.offset(), pos) {
+                let rows = state.focused().map_or(0, |r| views::detail_rows(r).len());
+                if row < rows {
+                    state.focus = Focus::Details;
+                    state.detail_index = row;
+                    if in_mark_column(area, pos) {
+                        handle_key(state, space);
+                        state.detail_index = row;
+                    }
+                }
+                return true;
+            }
+        }
+        Tab::Branches => {
+            let area = state.layout.branch_table;
+            if let Some(row) = clicked_row(area, state.branch_table.offset(), pos) {
+                if row < views::branch_rows(state).len() {
+                    state.branch_cursor = row;
+                    if in_mark_column(area, pos) {
+                        handle_key(state, space);
+                        state.branch_cursor = row;
+                    }
+                }
+                return true;
+            }
+        }
+        Tab::Queue => {
+            if let Some(row) =
+                clicked_row(state.layout.queue_table, state.queue_table.offset(), pos)
+            {
+                state.queue_cursor = row.min(views::queue_rows(state).len().saturating_sub(1));
+                return true;
+            }
+        }
+        Tab::Dashboard => {
+            if let Some(row) = clicked_row(
+                state.layout.dashboard_table,
+                state.dashboard_table.offset(),
+                pos,
+            ) {
+                let rows = views::dashboard_rows(state).len();
+                state.dashboard_cursor = row.min(rows.saturating_sub(1));
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Row under `pos` in a bordered table with a one-line header.
+fn clicked_row(area: Rect, offset: usize, pos: Position) -> Option<usize> {
+    let first_row = area.y + 2;
+    (area.contains(pos) && pos.y >= first_row && pos.y < area.bottom().saturating_sub(1))
+        .then(|| offset + (pos.y - first_row) as usize)
+}
+
+/// The `[ ]` column at the left of the selectable tables.
+fn in_mark_column(area: Rect, pos: Position) -> bool {
+    pos.x > area.x && pos.x <= area.x + 3
 }
 
 pub fn handle_key(state: &mut AppState, key: KeyEvent) {

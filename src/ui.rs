@@ -1,5 +1,6 @@
 use crossterm::{
     ExecutableCommand,
+    event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
@@ -40,8 +41,7 @@ pub fn run_tui(
     worker: crate::worker::Worker,
 ) -> io::Result<()> {
     install_panic_hook();
-    enable_raw_mode()?;
-    stdout().execute(EnterAlternateScreen)?;
+    enter_terminal(state.config.mouse)?;
 
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::new(backend)?;
@@ -79,8 +79,7 @@ pub fn run_tui(
         // Handle self-update request
         if state.is_updating {
             // Exit TUI cleanly before performing update
-            disable_raw_mode()?;
-            stdout().execute(LeaveAlternateScreen)?;
+            leave_terminal()?;
             println!("🔄 Updating sloth...");
             match crate::updater::perform_update() {
                 Ok(()) => {
@@ -90,8 +89,7 @@ pub fn run_tui(
                 Err(e) => {
                     println!("❌ Update failed: {}", e);
                     // Re-enter TUI
-                    enable_raw_mode()?;
-                    stdout().execute(EnterAlternateScreen)?;
+                    enter_terminal(state.config.mouse)?;
                     terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
                     state.is_updating = false;
                     dirty = true;
@@ -105,8 +103,7 @@ pub fn run_tui(
         }
     }
 
-    disable_raw_mode()?;
-    stdout().execute(LeaveAlternateScreen)?;
+    leave_terminal()?;
 
     Ok(())
 }
@@ -140,13 +137,28 @@ fn start_execution(state: &mut AppState, action: UiAction, tx: &Sender<ScannerEv
     });
 }
 
+fn enter_terminal(mouse: bool) -> io::Result<()> {
+    enable_raw_mode()?;
+    stdout().execute(EnterAlternateScreen)?;
+    if mouse {
+        stdout().execute(EnableMouseCapture)?;
+    }
+    Ok(())
+}
+
+fn leave_terminal() -> io::Result<()> {
+    stdout().execute(DisableMouseCapture)?;
+    disable_raw_mode()?;
+    stdout().execute(LeaveAlternateScreen)?;
+    Ok(())
+}
+
 /// Leaves raw mode and the alternate screen before a panic message is
 /// printed, so a crash does not leave the terminal unusable.
 fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let _ = disable_raw_mode();
-        let _ = stdout().execute(LeaveAlternateScreen);
+        let _ = leave_terminal();
         default_hook(info);
     }));
 }

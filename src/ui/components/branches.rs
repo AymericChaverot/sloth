@@ -13,6 +13,7 @@ use ratatui::{
 /// Every branch of every repository in one table, so branches of several
 /// projects can be reviewed and selected together.
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+    state.layout.branch_table = area;
     let theme = crate::ui::theme::get_theme(state.theme_index);
     let dim = Style::default().fg(theme.text_dimmed);
     let rows_index = views::branch_rows(state);

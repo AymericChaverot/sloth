@@ -12,6 +12,7 @@ use ratatui::{
 
 /// Everything selected for cleanup, in every repository, as it will run.
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+    state.layout.queue_table = area;
     let theme = crate::ui::theme::get_theme(state.theme_index);
     let dim = Style::default().fg(theme.text_dimmed);
     let rows_data = views::queue_rows(state);

@@ -146,6 +146,17 @@ pub enum UiAction {
     DeepClean,
 }
 
+/// Where things were drawn in the last frame, to map mouse clicks to them.
+#[derive(Debug, Default, Clone)]
+pub struct LayoutCache {
+    pub tabs: Vec<(ratatui::layout::Rect, Tab)>,
+    pub repo_table: ratatui::layout::Rect,
+    pub detail_table: ratatui::layout::Rect,
+    pub branch_table: ratatui::layout::Rect,
+    pub queue_table: ratatui::layout::Rect,
+    pub dashboard_table: ratatui::layout::Rect,
+}
+
 /// Re-analysis requested by the user, carried out by the main loop.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refresh {
@@ -286,6 +297,7 @@ pub struct AppState {
     pub should_quit: bool,
     pub action: Option<UiAction>,
     pub refresh: Option<Refresh>,
+    pub layout: LayoutCache,
     pub is_scanning: bool,
     pub is_analyzing: bool,
     /// Drives spinner animations.
@@ -344,6 +356,7 @@ impl AppState {
             should_quit: false,
             action: None,
             refresh: None,
+            layout: LayoutCache::default(),
             is_scanning: true,
             is_analyzing: true,
             started: std::time::Instant::now(),

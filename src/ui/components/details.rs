@@ -11,6 +11,7 @@ use ratatui::{
 };
 
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+    state.layout.detail_table = area;
     let theme = crate::ui::theme::get_theme(state.theme_index);
     let focused = state.focus == Focus::Details;
     let dim = Style::default().fg(theme.text_dimmed);

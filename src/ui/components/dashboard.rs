@@ -33,6 +33,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     let [cards_area, table_area] =
         Layout::vertical([Constraint::Length(5), Constraint::Min(3)]).areas(area);
+    state.layout.dashboard_table = table_area;
     let cards = Layout::horizontal([Constraint::Ratio(1, 4); 4]).split(cards_area);
 
     let mut repo_notes = vec![format!("{dirty} with local changes")];
