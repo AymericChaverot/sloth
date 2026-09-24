@@ -13,8 +13,10 @@ pub enum ScannerError {
 
 /// Discovers Git repositories using a parallel filesystem walker.
 /// Returns a receiver channel that emits paths to discovered repository roots.
+/// Directories named in `exclude` are skipped entirely.
 pub fn scan_for_repositories<P: AsRef<Path>>(
     root: P,
+    exclude: Vec<String>,
 ) -> mpsc::Receiver<Result<PathBuf, ScannerError>> {
     let (tx, rx) = mpsc::channel(256);
     let root_path = root.as_ref().to_path_buf();
@@ -24,6 +26,13 @@ pub fn scan_for_repositories<P: AsRef<Path>>(
             .hidden(false)
             .ignore(true)
             .git_ignore(true)
+            .filter_entry(move |entry| {
+                !(entry.depth() > 0
+                    && entry.file_type().is_some_and(|ft| ft.is_dir())
+                    && exclude
+                        .iter()
+                        .any(|name| entry.file_name() == name.as_str()))
+            })
             .build_parallel()
             .run(|| {
                 let tx = tx.clone();

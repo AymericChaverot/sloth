@@ -2,14 +2,14 @@ use crate::ui::state::AppState;
 use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::Rect,
     style::Style,
     text::Text,
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
-    if !state.diff_modal_open {
+    if state.diff_target.is_none() {
         return;
     }
     let theme = crate::ui::theme::get_theme(state.theme_index);
@@ -51,33 +51,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     let paragraph = Paragraph::new(diff_text).block(block).scroll((0, 0)); // Parsing already sliced lines, so scroll is 0.
 
-    let area = centered_rect(80, 80, area);
+    let area = super::centered_rect(80, 80, area);
     f.render_widget(Clear, area); //this clears out the background
     f.render_widget(paragraph, area);
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Percentage((100 - percent_y) / 2),
-                Constraint::Percentage(percent_y),
-                Constraint::Percentage((100 - percent_y) / 2),
-            ]
-            .as_ref(),
-        )
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(
-            [
-                Constraint::Percentage((100 - percent_x) / 2),
-                Constraint::Percentage(percent_x),
-                Constraint::Percentage((100 - percent_x) / 2),
-            ]
-            .as_ref(),
-        )
-        .split(popup_layout[1])[1]
 }

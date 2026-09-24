@@ -1,13 +1,14 @@
+use crate::git::stats::format_size;
 use crate::ui::state::AppState;
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Paragraph},
+    widgets::Paragraph,
 };
 
-/// HSL to RGB conversion for rainbow gradient
+/// HSL to RGB conversion for the rainbow title.
 fn hsl_to_rgb(h: f64) -> (u8, u8, u8) {
     let s = 0.8_f64;
     let l = 0.55_f64;
@@ -30,65 +31,86 @@ fn hsl_to_rgb(h: f64) -> (u8, u8, u8) {
     )
 }
 
-pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
+/// One line: title, scanned directory, totals, progress, update and theme.
+pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     let theme = crate::ui::theme::get_theme(state.theme_index);
-    let version = env!("CARGO_PKG_VERSION");
-    let art_lines = [
-        "  ▄▄▄▄▄  ▄▄                ",
-        " ██▀▀▀▀█▄ ██       █▄ █▄   ",
-        " ▀██▄  ▄▀ ██      ▄██▄██   ",
-        "   ▀██▄▄  ██ ▄███▄ ██ ████▄",
-        " ▄   ▀██▄ ██ ██ ██ ██ ██ ██",
-        " ▀██████▀▄██▄▀███▀▄██▄██ ██",
-    ];
-    let max_diag = (art_lines.len() + 28) as f64;
+    let dim = Style::default().fg(theme.text_dimmed);
+    let sep = || Span::styled(" · ", dim);
 
-    let mut header_lines: Vec<Line> = Vec::new();
-    header_lines.push(Line::from("")); // top padding
-    for (row, art) in art_lines.iter().enumerate() {
-        let mut spans: Vec<Span> = Vec::new();
-        for (col, ch) in art.chars().enumerate() {
-            let diag = (row + col) as f64;
-            let hue = (diag / max_diag) * 300.0;
-            let (r, g, b) = hsl_to_rgb(hue);
-            spans.push(Span::styled(
-                ch.to_string(),
-                Style::default().fg(Color::Rgb(r, g, b)),
-            ));
-        }
-        if row == art_lines.len() - 1 {
-            spans.push(Span::styled(
-                format!(" v{} - The git repository cleaner tool", version),
-                Style::default().fg(theme.text_dimmed),
-            ));
-        }
-        header_lines.push(Line::from(spans));
+    let mut spans = Vec::new();
+    let title = "sloth";
+    for (i, ch) in title.chars().enumerate() {
+        let (r, g, b) = hsl_to_rgb(i as f64 / title.len() as f64 * 300.0);
+        spans.push(Span::styled(
+            ch.to_string(),
+            Style::default()
+                .fg(Color::Rgb(r, g, b))
+                .add_modifier(Modifier::BOLD),
+        ));
     }
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(30)].as_ref())
-        .split(area);
+    spans.push(Span::styled(
+        format!(" v{}  ", env!("CARGO_PKG_VERSION")),
+        dim,
+    ));
+    spans.push(Span::styled(
+        state.root.display().to_string(),
+        Style::default().fg(theme.secondary),
+    ));
 
-    let header = Paragraph::new(header_lines).alignment(Alignment::Left);
-    f.render_widget(header, chunks[0]);
+    let totals = state.totals();
+    spans.push(sep());
+    spans.push(Span::raw(format!("{} repos", state.repositories.len())));
+    spans.push(sep());
+    spans.push(Span::raw(format!(".git {}", format_size(totals.git_bytes))));
+    if totals.untracked_bytes > 0 {
+        spans.push(sep());
+        spans.push(Span::raw(format!(
+            "{} reclaimable",
+            format_size(totals.untracked_bytes)
+        )));
+    }
+    if totals.cleanable_branches > 0 {
+        spans.push(sep());
+        spans.push(Span::styled(
+            format!("{} cleanable branches", totals.cleanable_branches),
+            Style::default().fg(theme.merged),
+        ));
+    }
 
-    let theme_label = Paragraph::new(format!("Theme: {}", theme.name))
-        .style(Style::default().fg(theme.primary))
-        .alignment(Alignment::Right)
-        .block(Block::default());
+    if state.is_scanning {
+        spans.push(Span::styled(
+            format!("   {} scanning…", state.spinner()),
+            Style::default().fg(theme.primary),
+        ));
+    } else if state.is_analyzing {
+        let analyzed = state.repositories.iter().filter(|r| r.analyzed).count();
+        spans.push(Span::styled(
+            format!(
+                "   {} analyzing {}/{}",
+                state.spinner(),
+                analyzed,
+                state.repositories.len()
+            ),
+            Style::default().fg(theme.primary),
+        ));
+    }
 
-    // We want the theme label vertically aligned at the bottom (or same level as the version line).
-    // The version line is at art_lines.len(). We can just lay it out.
-    let theme_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Length(art_lines.len() as u16),
-                Constraint::Length(1),
-            ]
-            .as_ref(),
-        )
-        .split(chunks[1]);
+    let mut right = Vec::new();
+    if let Some(version) = &state.update_available {
+        right.push(Span::styled(
+            format!("↑ {version} available (u)  "),
+            Style::default().fg(theme.success),
+        ));
+    }
+    right.push(Span::styled(format!("[{}]", theme.name), dim));
+    let right = Line::from(right);
 
-    f.render_widget(theme_label, theme_layout[1]);
+    let [left_area, right_area] =
+        Layout::horizontal([Constraint::Min(0), Constraint::Length(right.width() as u16)])
+            .areas(area);
+    f.render_widget(Paragraph::new(Line::from(spans)), left_area);
+    f.render_widget(
+        Paragraph::new(right).alignment(Alignment::Right),
+        right_area,
+    );
 }

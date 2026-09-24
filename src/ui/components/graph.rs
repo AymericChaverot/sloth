@@ -15,7 +15,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut graph_lines = Vec::new();
     let mut total_graph_count = 0;
 
-    if let Some(repo) = state.repositories.get(state.repo_index)
+    if let Some(repo) = state.focused()
         && let Some(lines) = &repo.graph_lines
     {
         total_graph_count = lines.len();

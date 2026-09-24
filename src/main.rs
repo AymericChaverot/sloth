@@ -1,11 +1,19 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
+mod cleanup;
+mod cli;
+mod config;
 mod engine;
 mod git;
+mod journal;
 mod scanner;
 mod sys;
 mod ui;
 mod updater;
+mod worker;
+
+#[cfg(test)]
+mod test_support;
 
 use crate::ui::AppState;
 
@@ -13,220 +21,68 @@ use crate::ui::AppState;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// The root directory to scan for Git repositories
-    #[arg(short, long, default_value = ".")]
-    path: String,
+    /// [default: `default_path` from the config file, or the current directory]
+    #[arg(short, long, global = true)]
+    path: Option<String>,
+
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Delete merged, gone or stale branches across repositories, without the TUI
+    ///
+    /// Without criteria, deletes merged and gone branches. Protected branches
+    /// (default, checked out, `protected_branches`) are never deleted.
+    Clean(cli::CleanArgs),
+    /// Restore branches and stashes deleted by sloth (lists them without arguments)
+    Restore {
+        /// Journal entry ids to restore
+        ids: Vec<usize>,
+        /// Restore everything deleted by the last cleanup run
+        #[arg(long, conflicts_with = "ids")]
+        last: bool,
+    },
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    if let Some(Command::Restore { ids, last }) = &args.command {
+        return cli::restore(ids, *last);
+    }
+
+    let (config, config_warning) = config::Config::load();
+    let root = config.scan_root(args.path.as_deref());
+    if !root.is_dir() {
+        anyhow::bail!("{} is not a directory", root.display());
+    }
+
+    if let Some(Command::Clean(clean_args)) = args.command {
+        if let Some(warning) = config_warning {
+            eprintln!("! {warning} — using defaults.");
+        }
+        return cli::clean(root, config, clean_args).await;
+    }
 
     let (tx, rx) = std::sync::mpsc::channel();
-    let path_clone = args.path.clone();
-
-    let tx_scanner = tx.clone();
-    let tx_update = tx.clone();
-    let tx_ui = tx.clone();
-
-    tokio::spawn(async move {
-        let tx = tx_scanner;
-        let mut rx_scan = scanner::scan_for_repositories(&path_clone);
-        let mut git_repos = Vec::new();
-
-        // Collect paths
-        while let Some(res) = rx_scan.recv().await {
-            if let Ok(path) = res {
-                git_repos.push(path.clone());
-                let _ = tx.send(ui::ScannerEvent::RepoFound(path));
-            }
-        }
-        let _ = tx.send(ui::ScannerEvent::ScanComplete);
-
-        // Analyze concurrently
-        let mut tasks = Vec::new();
-        for path in git_repos {
-            tasks.push(tokio::task::spawn_blocking(move || {
-                let sys = crate::sys::RealSystem;
-                git::analyze_repository(&path, &sys)
-            }));
-        }
-
-        let mut size_tasks_args = Vec::new();
-
-        for task in tasks {
-            if let Ok(Ok(status)) = task.await {
-                size_tasks_args.push((
-                    status.path.clone(),
-                    status
-                        .worktrees
-                        .iter()
-                        .map(|w| w.path.clone())
-                        .collect::<Vec<_>>(),
-                ));
-                let _ = tx.send(ui::ScannerEvent::RepoAnalyzed(status));
-            }
-        }
-        let _ = tx.send(ui::ScannerEvent::AnalysisComplete);
-
-        // Spawn background size calculator (sequential to avoid I/O thrashing).
-        // Sends SizePartial updates as each file/dir is discovered so the UI
-        // can show a live growing estimate rather than a blank then a jump.
-        tokio::task::spawn_blocking(move || {
-            use crate::sys::{FileSystem as _, GitExecutor as _};
-            let sys = crate::sys::RealSystem;
-
-            for (path, wt_paths) in size_tasks_args {
-                // 1. .git directory size — send immediately so something appears
-                let git_size = sys.get_size(&path.join(".git")).ok();
-                let mut running = git_size.unwrap_or(0);
-                let _ = tx.send(ui::ScannerEvent::SizePartial {
-                    path: path.clone(),
-                    size_bytes: running,
-                });
-
-                // 2. Walk untracked/ignored files, accumulating and streaming updates
-                let mut untracked_size = 0u64;
-                let mut has_untracked = false;
-                if let Ok(out_str) = sys.run_git_command(&path, &["clean", "-ndx"]) {
-                    has_untracked = true;
-                    for line in out_str.lines() {
-                        if line.starts_with("Would remove ") {
-                            let to_remove = line.trim_start_matches("Would remove ");
-                            let full_path = path.join(to_remove);
-                            if sys.exists(&full_path) {
-                                let file_size = sys.get_size(&full_path).unwrap_or(0);
-                                untracked_size += file_size;
-                                running += file_size;
-                                let _ = tx.send(ui::ScannerEvent::SizePartial {
-                                    path: path.clone(),
-                                    size_bytes: running,
-                                });
-                            }
-                        }
-                    }
-                }
-
-                // 3. Worktree sizes
-                let mut worktree_sizes = std::collections::HashMap::new();
-                for wt in &wt_paths {
-                    let s = sys.get_size(std::path::Path::new(wt)).ok();
-                    worktree_sizes.insert(wt.clone(), s);
-                }
-
-                // 4. Final definitive event
-                let _ = tx.send(ui::ScannerEvent::SizeComputed {
-                    path,
-                    size_bytes: git_size,
-                    untracked_size_bytes: if has_untracked {
-                        Some(untracked_size)
-                    } else {
-                        None
-                    },
-                    worktree_sizes,
-                });
-            }
-        });
-    });
+    let worker = worker::Worker::new(tx.clone(), config.deep_clean_keep.clone());
+    worker.scan(root.clone(), config.scan_exclude.clone());
 
     // Spawn background update check (non-blocking, best-effort)
+    let tx_update = tx.clone();
     tokio::task::spawn_blocking(move || {
         if let Some(version) = updater::check_for_update() {
             let _ = tx_update.send(ui::ScannerEvent::UpdateAvailable(version));
         }
     });
 
-    let state = AppState::new();
-
-    if let Some((paths, action, branches, stashes, worktrees)) = ui::run_tui(state, rx, tx_ui)? {
-        let sys = crate::sys::RealSystem;
-        let mut size_before = 0;
-        for path in &paths {
-            if let Ok(s) = crate::git::stats::get_repo_size(path, &sys) {
-                size_before += s;
-            }
-        }
-        for wt in &worktrees {
-            if let Ok(s) = crate::git::stats::get_repo_size(std::path::Path::new(wt), &sys) {
-                size_before += s;
-            }
-        }
-
-        let engine_action = match action {
-            ui::UiAction::CleanRepo => {
-                if branches.is_empty() && stashes.is_empty() && worktrees.is_empty() {
-                    println!("No branches, stashes, or worktrees selected for deletion.");
-                    return Ok(());
-                }
-                engine::Action::CleanRepo {
-                    branches,
-                    stashes,
-                    worktrees: worktrees.clone(),
-                }
-            }
-            ui::UiAction::PruneRemotes => engine::Action::PruneRemotes,
-            ui::UiAction::GarbageCollect => engine::Action::GarbageCollect,
-            ui::UiAction::DeepClean => engine::Action::DeepClean,
-        };
-
-        if paths.len() == 1 {
-            println!(
-                "\nExecuting {} on {} (Dry-run false)...",
-                match engine_action {
-                    engine::Action::CleanRepo { .. } => "CleanRepo",
-                    engine::Action::PruneRemotes => "PruneRemotes",
-                    engine::Action::GarbageCollect => "GarbageCollect",
-                    engine::Action::DeepClean => "DeepClean",
-                },
-                paths[0].display()
-            );
-        } else {
-            println!(
-                "\nExecuting {} on {} repositories (Dry-run false)...",
-                match engine_action {
-                    engine::Action::CleanRepo { .. } => "CleanRepo",
-                    engine::Action::PruneRemotes => "PruneRemotes",
-                    engine::Action::GarbageCollect => "GarbageCollect",
-                    engine::Action::DeepClean => "DeepClean",
-                },
-                paths.len()
-            );
-        }
-
-        let results = engine::execute_batch(
-            paths.clone(),
-            engine_action,
-            false, // REAL EXECUTION!
-            sys.clone(),
-        )
-        .await;
-
-        for res in results {
-            let symbol = if res.success { "✅" } else { "❌" };
-            println!("{} {}: {}", symbol, res.repo_path.display(), res.message);
-        }
-
-        let mut size_after = 0;
-        for path in &paths {
-            if let Ok(s) = crate::git::stats::get_repo_size(path, &sys) {
-                size_after += s;
-            }
-        }
-        for wt in &worktrees {
-            if let Ok(s) = crate::git::stats::get_repo_size(std::path::Path::new(wt), &sys) {
-                size_after += s;
-            }
-        }
-
-        let recovered = size_before.saturating_sub(size_after);
-        if recovered > 0 {
-            println!(
-                "\nDisk space recovered: {}",
-                crate::git::stats::format_size(recovered)
-            );
-        }
-    } else {
-        println!("No action executed.");
+    let mut state = AppState::new(config, root);
+    state.journal = journal::Journal::open_default();
+    if let Some(warning) = config_warning {
+        state.warn(format!("{warning} — using defaults"));
     }
-
+    ui::run_tui(state, rx, tx, worker)?;
     Ok(())
 }

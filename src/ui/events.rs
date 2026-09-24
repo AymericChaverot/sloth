@@ -1,278 +1,618 @@
-use crate::ui::state::{AppState, Focus, UiAction};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crate::ui::loader::DiffTarget;
+use crate::ui::selection::ItemKind;
+use crate::ui::state::{AppState, Focus, Refresh, Tab, UiAction};
+use crate::ui::views::{self, DetailRow};
+use crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+    MouseEventKind,
+};
+use ratatui::layout::{Position, Rect};
+use std::path::PathBuf;
 use std::time::Duration;
 
-pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
-    if event::poll(Duration::from_millis(16))?
-        && let Event::Key(key) = event::read()?
-        && key.kind == KeyEventKind::Press
-    {
-        // Confirm modal takes priority over everything else
-        if state.pending_action.is_some() {
-            match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') => {
-                    state.action = state.pending_action.take();
-                    state.confirm_preview_lines = None;
-                    state.should_quit = true;
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                    state.pending_action = None;
-                    state.confirm_preview_lines = None;
-                }
-                _ => {}
-            }
-            return Ok(());
-        }
+/// Rows moved by Page Up / Page Down.
+const PAGE: isize = 10;
 
-        if state.diff_modal_open {
-            match key.code {
-                KeyCode::Esc | KeyCode::Char('v') => {
-                    state.diff_modal_open = false;
-                }
-                KeyCode::Up => {
-                    state.diff_scroll = state.diff_scroll.saturating_sub(1);
-                }
-                KeyCode::Down => {
-                    state.diff_scroll = state.diff_scroll.saturating_add(1);
-                }
-                KeyCode::PageUp => {
-                    state.diff_scroll = state.diff_scroll.saturating_sub(10);
-                }
-                KeyCode::PageDown => {
-                    state.diff_scroll = state.diff_scroll.saturating_add(10);
-                }
-                KeyCode::Home => {
-                    state.diff_scroll = 0;
-                }
-                _ => {}
-            }
-            return Ok(());
+/// Waits up to `timeout` for input. Returns whether the screen must be redrawn.
+pub fn handle_events(state: &mut AppState, timeout: Duration) -> std::io::Result<bool> {
+    if !event::poll(timeout)? {
+        return Ok(false);
+    }
+    match event::read()? {
+        Event::Key(key) if key.kind == KeyEventKind::Press => {
+            handle_key(state, key);
+            Ok(true)
         }
+        Event::Mouse(mouse) => Ok(handle_mouse(state, mouse)),
+        Event::Resize(..) => Ok(true),
+        _ => Ok(false),
+    }
+}
 
-        if state.is_searching {
-            match key.code {
-                KeyCode::Esc | KeyCode::Enter => {
-                    state.is_searching = false;
-                }
-                KeyCode::Backspace => {
-                    state.search_query.pop();
-                }
-                KeyCode::Char(c) => {
-                    state.search_query.push(c);
-                }
-                _ => {}
-            }
-            return Ok(());
+/// Clicks select rows and tabs (a click in the first column toggles the
+/// row); the wheel moves the cursor of the table under the pointer.
+pub fn handle_mouse(state: &mut AppState, mouse: MouseEvent) -> bool {
+    let pos = Position::new(mouse.column, mouse.row);
+    let key = match mouse.kind {
+        MouseEventKind::ScrollUp => Some(KeyCode::Up),
+        MouseEventKind::ScrollDown => Some(KeyCode::Down),
+        _ => None,
+    };
+
+    // Overlays: only scrolling.
+    if state.execution.is_some() || state.diff_target.is_some() {
+        if let Some(code) = key {
+            handle_key(state, KeyEvent::new(code, KeyModifiers::NONE));
+            return true;
         }
+        return false;
+    }
+    if state.show_help || state.pending_action.is_some() || state.editing_filter {
+        return false;
+    }
 
-        match key.code {
-            KeyCode::Char('q') => state.should_quit = true,
-            KeyCode::Char('u') if state.update_available.is_some() && !state.is_updating => {
-                state.is_updating = true;
+    if let Some(code) = key {
+        if state.tab == Tab::Repos {
+            if state.layout.repo_table.contains(pos) {
+                state.focus = Focus::Repositories;
+            } else if state.layout.detail_table.contains(pos) {
+                state.focus = Focus::Details;
             }
-            KeyCode::Esc => {
-                if state.focus == Focus::Details {
-                    state.selected_branches.remove(&state.repo_index);
-                    state.selected_stashes.remove(&state.repo_index);
-                    state.selected_worktrees.remove(&state.repo_index);
-                } else if state.focus == Focus::Dashboard {
+        }
+        handle_key(state, KeyEvent::new(code, KeyModifiers::NONE));
+        return true;
+    }
+    if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+        return false;
+    }
+
+    if let Some(&(_, tab)) = state.layout.tabs.iter().find(|(r, _)| r.contains(pos)) {
+        state.tab = tab;
+        return true;
+    }
+    let space = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+    match state.tab {
+        Tab::Repos => {
+            let area = state.layout.repo_table;
+            if let Some(row) = clicked_row(area, state.repo_table.offset(), pos) {
+                let visible = views::visible_repos(state);
+                if let Some(&i) = visible.get(row) {
                     state.focus = Focus::Repositories;
-                } else if state.focus == Focus::GitGraph {
-                    state.graph_maximized = false;
+                    state.focus_repo(state.repositories[i].path.clone());
+                    if in_mark_column(area, pos) {
+                        handle_key(state, space);
+                    }
+                }
+                return true;
+            }
+            let area = state.layout.detail_table;
+            if let Some(row) = clicked_row(area, state.detail_table.offset(), pos) {
+                let rows = state.focused().map_or(0, |r| views::detail_rows(r).len());
+                if row < rows {
                     state.focus = Focus::Details;
-                }
-            }
-            KeyCode::Char('f') | KeyCode::Char('m') if state.focus == Focus::GitGraph => {
-                state.graph_maximized = !state.graph_maximized;
-            }
-            KeyCode::Char('g') => {
-                state.show_graph = !state.show_graph;
-                if !state.show_graph && state.focus == Focus::GitGraph {
-                    state.graph_maximized = false;
-                    state.focus = Focus::Details;
-                }
-            }
-            KeyCode::Right => {
-                if state.focus == Focus::Dashboard {
-                    state.focus = Focus::Repositories;
-                } else if state.focus == Focus::Repositories && !state.repositories.is_empty() {
-                    state.focus = Focus::Details;
-                    state.detail_index = 0;
-                } else if state.focus == Focus::Details && state.show_graph {
-                    state.focus = Focus::GitGraph;
-                } else if state.focus == Focus::GitGraph {
-                    state.graph_scroll_x = state.graph_scroll_x.saturating_add(2);
-                }
-            }
-            KeyCode::Left => {
-                if state.focus == Focus::Dashboard || state.focus == Focus::Details {
-                    state.focus = Focus::Repositories;
-                } else if state.focus == Focus::GitGraph {
-                    if state.graph_scroll_x > 0 {
-                        state.graph_scroll_x = state.graph_scroll_x.saturating_sub(2);
-                    } else {
-                        // Navigate back if scroll is 0 and not full screen
-                        if !state.graph_maximized {
-                            state.focus = Focus::Details;
-                        }
+                    state.detail_index = row;
+                    if in_mark_column(area, pos) {
+                        handle_key(state, space);
+                        state.detail_index = row;
                     }
                 }
+                return true;
             }
-            KeyCode::Char(' ') => {
-                if state.focus == Focus::Repositories && !state.repositories.is_empty() {
-                    if state.selected_repositories.contains(&state.repo_index) {
-                        state.selected_repositories.remove(&state.repo_index);
-                    } else {
-                        state.selected_repositories.insert(state.repo_index);
-                    }
-                } else if state.focus == Focus::Details && !state.repositories.is_empty() {
-                    let repo = &state.repositories[state.repo_index];
-                    let b_len = repo.branches.len();
-                    if state.detail_index < b_len {
-                        // It's a branch
-                        let b_name = repo.branches[state.detail_index].name.clone();
-                        let set = state.selected_branches.entry(state.repo_index).or_default();
-                        if set.contains(&b_name) {
-                            set.remove(&b_name);
-                        } else {
-                            set.insert(b_name);
-                        }
-                    } else {
-                        let s_idx = state.detail_index.saturating_sub(b_len);
-                        if s_idx < repo.stashes.len() {
-                            // It's a stash
-                            let s_id = repo.stashes[s_idx].index;
-                            let set = state.selected_stashes.entry(state.repo_index).or_default();
-                            if set.contains(&s_id) {
-                                set.remove(&s_id);
-                            } else {
-                                set.insert(s_id);
-                            }
-                        } else {
-                            // It's a worktree
-                            let w_idx = s_idx.saturating_sub(repo.stashes.len());
-                            if w_idx < repo.worktrees.len() {
-                                let w_path = repo.worktrees[w_idx].path.clone();
-                                let set = state
-                                    .selected_worktrees
-                                    .entry(state.repo_index)
-                                    .or_default();
-                                if set.contains(&w_path) {
-                                    set.remove(&w_path);
-                                } else {
-                                    set.insert(w_path);
-                                }
-                            }
-                        }
+        }
+        Tab::Branches => {
+            let area = state.layout.branch_table;
+            if let Some(row) = clicked_row(area, state.branch_table.offset(), pos) {
+                if row < views::branch_rows(state).len() {
+                    state.branch_cursor = row;
+                    if in_mark_column(area, pos) {
+                        handle_key(state, space);
+                        state.branch_cursor = row;
                     }
                 }
+                return true;
             }
-            KeyCode::Char('a')
-                if state.focus == Focus::Details && !state.repositories.is_empty() =>
+        }
+        Tab::Queue => {
+            if let Some(row) =
+                clicked_row(state.layout.queue_table, state.queue_table.offset(), pos)
             {
-                let repo = &state.repositories[state.repo_index];
-                let set = state.selected_branches.entry(state.repo_index).or_default();
-                for branch in &repo.branches {
-                    if branch.is_dead || branch.is_merged {
-                        set.insert(branch.name.clone());
-                    }
-                }
+                state.queue_cursor = row.min(views::queue_rows(state).len().saturating_sub(1));
+                return true;
             }
-            KeyCode::Char('A')
-                if state.focus == Focus::Details && !state.repositories.is_empty() =>
-            {
-                let repo = &state.repositories[state.repo_index];
-                let set = state.selected_branches.entry(state.repo_index).or_default();
-                for branch in &repo.branches {
-                    set.insert(branch.name.clone());
-                }
+        }
+        Tab::Dashboard => {
+            if let Some(row) = clicked_row(
+                state.layout.dashboard_table,
+                state.dashboard_table.offset(),
+                pos,
+            ) {
+                let rows = views::dashboard_rows(state).len();
+                state.dashboard_cursor = row.min(rows.saturating_sub(1));
+                return true;
             }
-            KeyCode::Enter if state.focus == Focus::Details => {
-                state.pending_action = Some(UiAction::CleanRepo);
-            }
-            KeyCode::Char('p') if state.focus == Focus::Repositories => {
-                state.pending_action = Some(UiAction::PruneRemotes);
-            }
-            KeyCode::Char('c') if state.focus == Focus::Repositories => {
-                state.pending_action = Some(UiAction::GarbageCollect);
-            }
-            KeyCode::Char('t') => {
-                state.theme_index = (state.theme_index + 1) % crate::ui::theme::THEMES.len();
-                crate::ui::theme::save_theme(state.theme_index);
-            }
-            KeyCode::Char('v') if state.focus == Focus::Details => {
-                state.diff_modal_open = true;
-                state.diff_lines = None;
-                state.diff_scroll = 0;
-            }
-            KeyCode::Char('X')
-                if state.focus == Focus::Repositories && !state.repositories.is_empty() =>
-            {
-                state.pending_action = Some(UiAction::DeepClean);
-            }
-            KeyCode::Char('d') => {
-                if state.focus == Focus::Dashboard {
-                    state.focus = Focus::Repositories;
-                } else {
-                    state.focus = Focus::Dashboard;
-                }
-            }
-            KeyCode::Char('/') => {
-                state.is_searching = true;
-            }
-            KeyCode::Up => match state.focus {
-                Focus::Repositories => {
-                    if state.repo_index > 0 {
-                        state.repo_index -= 1;
-                        state.repo_state.select(Some(state.repo_index));
-                        state.graph_scroll_y = 0;
-                        state.graph_scroll_x = 0;
-                    }
-                }
-                Focus::Details => {
-                    if state.detail_index > 0 {
-                        state.detail_index -= 1;
-                    }
-                }
-                Focus::GitGraph => {
-                    state.graph_scroll_y = state.graph_scroll_y.saturating_sub(1);
-                }
-                Focus::Dashboard => {}
-            },
-            KeyCode::Down => match state.focus {
-                Focus::Repositories => {
-                    if state.repo_index + 1 < state.repositories.len() {
-                        state.repo_index += 1;
-                        state.repo_state.select(Some(state.repo_index));
-                        state.graph_scroll_y = 0;
-                        state.graph_scroll_x = 0;
-                    }
-                }
-                Focus::Details => {
-                    if !state.repositories.is_empty() {
-                        let repo = &state.repositories[state.repo_index];
-                        let total = repo.branches.len() + repo.stashes.len() + repo.worktrees.len();
-                        if state.detail_index + 1 < total {
-                            state.detail_index += 1;
-                        }
-                    }
-                }
-                Focus::GitGraph => {
-                    if let Some(repo) = state.repositories.get(state.repo_index) {
-                        let bounds = if let Some(l) = &repo.graph_lines {
-                            l.len()
-                        } else {
-                            0
-                        };
-                        if (state.graph_scroll_y as usize) + 1 < bounds {
-                            state.graph_scroll_y += 1;
-                        }
-                    }
-                }
-                Focus::Dashboard => {}
-            },
-            _ => {}
         }
     }
-    Ok(())
+    false
+}
+
+/// Row under `pos` in a bordered table with a one-line header.
+fn clicked_row(area: Rect, offset: usize, pos: Position) -> Option<usize> {
+    let first_row = area.y + 2;
+    (area.contains(pos) && pos.y >= first_row && pos.y < area.bottom().saturating_sub(1))
+        .then(|| offset + (pos.y - first_row) as usize)
+}
+
+/// The `[ ]` column at the left of the selectable tables.
+fn in_mark_column(area: Rect, pos: Position) -> bool {
+    pos.x > area.x && pos.x <= area.x + 3
+}
+
+pub fn handle_key(state: &mut AppState, key: KeyEvent) {
+    // Overlays capture input, from the most to the least important.
+    if state.execution.is_some() {
+        return execution_key(state, key.code);
+    }
+    if state.show_help {
+        if matches!(
+            key.code,
+            KeyCode::Char('?') | KeyCode::Esc | KeyCode::Char('q')
+        ) {
+            state.show_help = false;
+        }
+        return;
+    }
+    if state.pending_action.is_some() {
+        return confirm_key(state, key.code);
+    }
+    if state.diff_target.is_some() {
+        return diff_key(state, key.code);
+    }
+    if state.editing_filter {
+        return filter_key(state, key.code);
+    }
+    if global_key(state, key.code) {
+        return;
+    }
+    match state.tab {
+        Tab::Repos => match state.focus {
+            Focus::Repositories => repo_list_key(state, key.code),
+            Focus::Details => details_key(state, key.code),
+            Focus::GitGraph => graph_key(state, key.code),
+        },
+        Tab::Branches => branches_key(state, key.code),
+        Tab::Queue => queue_key(state, key.code),
+        Tab::Dashboard => dashboard_key(state, key.code),
+    }
+}
+
+fn dashboard_key(state: &mut AppState, code: KeyCode) {
+    let rows = views::dashboard_rows(state);
+    let last = rows.len().saturating_sub(1);
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.dashboard_cursor = state.dashboard_cursor.saturating_sub(1)
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.dashboard_cursor = (state.dashboard_cursor + 1).min(last)
+        }
+        KeyCode::Char('a') => {
+            let all: Vec<PathBuf> = state.repositories.iter().map(|r| r.path.clone()).collect();
+            smart_select(state, &all);
+        }
+        KeyCode::Enter => {
+            if let Some(&i) = rows.get(state.dashboard_cursor) {
+                let path = state.repositories[i].path.clone();
+                state.repo_filter.clear();
+                state.focus_repo(path);
+                state.focus = Focus::Details;
+                state.tab = Tab::Repos;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The filter text edited with `/` in the current tab.
+fn active_filter(state: &mut AppState) -> &mut String {
+    match state.tab {
+        Tab::Branches => &mut state.branch_query,
+        _ => &mut state.repo_filter,
+    }
+}
+
+fn execution_key(state: &mut AppState, code: KeyCode) {
+    let Some(execution) = &mut state.execution else {
+        return;
+    };
+    match code {
+        KeyCode::Enter | KeyCode::Esc | KeyCode::Char('q') if execution.finished => {
+            state.execution = None;
+        }
+        KeyCode::Up => execution.scroll = execution.scroll.saturating_sub(1),
+        KeyCode::Down => execution.scroll = execution.scroll.saturating_add(1),
+        _ => {}
+    }
+}
+
+fn confirm_key(state: &mut AppState, code: KeyCode) {
+    match code {
+        KeyCode::Char('y') | KeyCode::Char('Y') => {
+            state.action = state.pending_action.take();
+            state.confirm_preview_lines = None;
+        }
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            state.pending_action = None;
+            state.confirm_preview_lines = None;
+        }
+        _ => {}
+    }
+}
+
+fn diff_key(state: &mut AppState, code: KeyCode) {
+    match code {
+        KeyCode::Esc | KeyCode::Char('v') | KeyCode::Char('q') => state.diff_target = None,
+        KeyCode::Up | KeyCode::Char('k') => state.diff_scroll = state.diff_scroll.saturating_sub(1),
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.diff_scroll = state.diff_scroll.saturating_add(1)
+        }
+        KeyCode::PageUp => state.diff_scroll = state.diff_scroll.saturating_sub(PAGE as u16),
+        KeyCode::PageDown => state.diff_scroll = state.diff_scroll.saturating_add(PAGE as u16),
+        KeyCode::Home => state.diff_scroll = 0,
+        _ => {}
+    }
+}
+
+fn filter_key(state: &mut AppState, code: KeyCode) {
+    match code {
+        KeyCode::Enter => state.editing_filter = false,
+        KeyCode::Esc => {
+            state.editing_filter = false;
+            active_filter(state).clear();
+        }
+        KeyCode::Backspace => {
+            active_filter(state).pop();
+        }
+        KeyCode::Char(c) => active_filter(state).push(c),
+        _ => {}
+    }
+}
+
+/// Keys that work the same in every tab. Returns whether the key was used.
+fn global_key(state: &mut AppState, code: KeyCode) -> bool {
+    match code {
+        KeyCode::Char('q') => state.should_quit = true,
+        KeyCode::Char('?') => state.show_help = true,
+        KeyCode::Char('u') if state.update_available.is_some() && !state.is_updating => {
+            state.is_updating = true;
+        }
+        KeyCode::Char(c @ '1'..='9') => {
+            if let Some(tab) = Tab::ALL.get(c as usize - '1' as usize) {
+                state.tab = *tab;
+            }
+        }
+        KeyCode::Tab => state.tab = state.tab.next(),
+        KeyCode::BackTab => state.tab = state.tab.previous(),
+        KeyCode::Char('t') => {
+            state.theme_index = (state.theme_index + 1) % crate::ui::theme::THEMES.len();
+            let name = crate::ui::theme::get_theme(state.theme_index).name;
+            state.config.save_theme(name);
+            state.notify(format!("Theme: {name}"));
+        }
+        KeyCode::Char('C') => {
+            if !state.selection.is_empty() {
+                state.selection.clear();
+                state.notify("Queue cleared");
+            }
+        }
+        KeyCode::Char('x') => request_queue_run(state),
+        KeyCode::Char('r') => {
+            let targets = state.action_targets();
+            if !targets.is_empty() {
+                state.notify(format!("Refreshing {} repo(s)…", targets.len()));
+                state.refresh = Some(Refresh::Repos(targets));
+            }
+        }
+        KeyCode::Char('R') => {
+            state.notify("Rescanning…");
+            state.refresh = Some(Refresh::Rescan);
+        }
+        _ => return false,
+    }
+    true
+}
+
+fn request_queue_run(state: &mut AppState) {
+    if state.selection.is_empty() {
+        state.warn("The queue is empty: select items with Space, or `a` for smart selection");
+    } else {
+        state.pending_action = Some(UiAction::CleanRepo);
+    }
+}
+
+fn repo_list_key(state: &mut AppState, code: KeyCode) {
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => state.move_repo_cursor(-1),
+        KeyCode::Down | KeyCode::Char('j') => state.move_repo_cursor(1),
+        KeyCode::PageUp => state.move_repo_cursor(-PAGE),
+        KeyCode::PageDown => state.move_repo_cursor(PAGE),
+        KeyCode::Home => state.move_repo_cursor(isize::MIN),
+        KeyCode::End => state.move_repo_cursor(isize::MAX),
+        KeyCode::Char('/') => state.editing_filter = true,
+        KeyCode::Esc if !state.repo_filter.is_empty() => state.repo_filter.clear(),
+        KeyCode::Esc => state.marked_repos.clear(),
+        KeyCode::Char('s') => {
+            state.repo_sort = state.repo_sort.next();
+            state.notify(format!("Sorted by {}", state.repo_sort.label()));
+        }
+        KeyCode::Char('g') => state.show_graph = !state.show_graph,
+        _ => {}
+    }
+    let Some(focused) = state.focused().map(|r| r.path.clone()) else {
+        return;
+    };
+    // Keep the cursor on the same repository as the list changes.
+    state.focus_repo(focused.clone());
+    match code {
+        KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => state.focus = Focus::Details,
+        KeyCode::Char(' ') => {
+            if !state.marked_repos.remove(&focused) {
+                state.marked_repos.insert(focused);
+            }
+            state.move_repo_cursor(1);
+        }
+        KeyCode::Char('a') => smart_select(state, &state.action_targets()),
+        KeyCode::Char('p') => state.pending_action = Some(UiAction::PruneRemotes),
+        KeyCode::Char('c') => state.pending_action = Some(UiAction::GarbageCollect),
+        KeyCode::Char('X') => state.pending_action = Some(UiAction::DeepClean),
+        _ => {}
+    }
+}
+
+fn details_key(state: &mut AppState, code: KeyCode) {
+    let Some(repo) = state.focused() else {
+        state.focus = Focus::Repositories;
+        return;
+    };
+    let path = repo.path.clone();
+    let rows = views::detail_rows(repo);
+    let last = rows.len().saturating_sub(1);
+    let current = rows.get(state.detail_index).copied();
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.detail_index = state.detail_index.saturating_sub(1)
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.detail_index = (state.detail_index + 1).min(last)
+        }
+        KeyCode::PageUp => state.detail_index = state.detail_index.saturating_sub(PAGE as usize),
+        KeyCode::PageDown => state.detail_index = (state.detail_index + PAGE as usize).min(last),
+        KeyCode::Home => state.detail_index = 0,
+        KeyCode::End => state.detail_index = last,
+        KeyCode::Left | KeyCode::Char('h') => state.focus = Focus::Repositories,
+        KeyCode::Right | KeyCode::Char('l') if state.show_graph => state.focus = Focus::GitGraph,
+        KeyCode::Char(' ') => {
+            if let Some(row) = current {
+                let repo = state.focused().expect("checked above");
+                match row.protection(repo, &state.config) {
+                    Some(p) => state.warn(format!("Protected: {}", p.label())),
+                    None => {
+                        let (kind, id) = row.item();
+                        let id = id.to_string();
+                        state.selection.toggle(&path, kind, &id);
+                        state.detail_index = (state.detail_index + 1).min(last);
+                    }
+                }
+            }
+        }
+        KeyCode::Char('a') => smart_select(state, &[path]),
+        KeyCode::Char('A') => {
+            let names: Vec<String> = repo
+                .branches
+                .iter()
+                .filter(|b| crate::cleanup::branch_protection(repo, b, &state.config).is_none())
+                .map(|b| b.name.clone())
+                .collect();
+            for name in &names {
+                state.selection.insert(&path, ItemKind::Branch, name);
+            }
+            state.notify(format!("{} branches selected", names.len()));
+        }
+        KeyCode::Enter => request_queue_run(state),
+        KeyCode::Esc => {
+            if state.selection.repo(&path).is_some() {
+                state.selection.clear_repo(&path);
+                state.notify("Selection cleared for this repository");
+            } else {
+                state.focus = Focus::Repositories;
+            }
+        }
+        KeyCode::Char('v') => {
+            let default = repo.default_branch.clone();
+            match current {
+                Some(DetailRow::Branch(b)) => {
+                    let target = DiffTarget::Branch {
+                        name: b.name.clone(),
+                        base: default.filter(|d| d != &b.name),
+                    };
+                    state.open_diff(path, target);
+                }
+                Some(DetailRow::Stash(s)) => {
+                    let target = DiffTarget::Stash { sha: s.sha.clone() };
+                    state.open_diff(path, target);
+                }
+                _ => state.warn("No diff for worktrees"),
+            }
+        }
+        KeyCode::Char('g') => state.show_graph = !state.show_graph,
+        _ => {}
+    }
+}
+
+fn branches_key(state: &mut AppState, code: KeyCode) {
+    let rows = views::branch_rows(state);
+    let last = rows.len().saturating_sub(1);
+    let current = rows.get(state.branch_cursor).map(|&(ri, bi)| {
+        let repo = &state.repositories[ri];
+        (repo.path.clone(), repo.branches[bi].name.clone())
+    });
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.branch_cursor = state.branch_cursor.saturating_sub(1)
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.branch_cursor = (state.branch_cursor + 1).min(last)
+        }
+        KeyCode::PageUp => state.branch_cursor = state.branch_cursor.saturating_sub(PAGE as usize),
+        KeyCode::PageDown => state.branch_cursor = (state.branch_cursor + PAGE as usize).min(last),
+        KeyCode::Home => state.branch_cursor = 0,
+        KeyCode::End => state.branch_cursor = last,
+        KeyCode::Char('/') => state.editing_filter = true,
+        KeyCode::Esc => state.branch_query.clear(),
+        KeyCode::Char('f') => {
+            state.branch_filter = state.branch_filter.next();
+            state.branch_cursor = 0;
+        }
+        KeyCode::Char('s') => state.branch_sort = state.branch_sort.next(),
+        KeyCode::Char(' ') => {
+            if let Some((path, name)) = current {
+                let repo = state.repo(&path).expect("row comes from the state");
+                let branch = repo.branches.iter().find(|b| b.name == name);
+                match branch.and_then(|b| crate::cleanup::branch_protection(repo, b, &state.config))
+                {
+                    Some(p) => state.warn(format!("Protected: {}", p.label())),
+                    None => {
+                        state.selection.toggle(&path, ItemKind::Branch, &name);
+                        state.branch_cursor = (state.branch_cursor + 1).min(last);
+                    }
+                }
+            }
+        }
+        KeyCode::Char('a') | KeyCode::Char('A') => {
+            // Select the listed branches: only the cleanable ones with `a`,
+            // every unprotected one with `A`.
+            let mut added = 0;
+            for &(ri, bi) in &rows {
+                let repo = &state.repositories[ri];
+                let branch = &repo.branches[bi];
+                let eligible = if code == KeyCode::Char('a') {
+                    crate::cleanup::is_smart_candidate(repo, branch, &state.config)
+                } else {
+                    crate::cleanup::branch_protection(repo, branch, &state.config).is_none()
+                };
+                if eligible
+                    && !state
+                        .selection
+                        .contains(&repo.path, ItemKind::Branch, &branch.name)
+                {
+                    let (path, name) = (repo.path.clone(), branch.name.clone());
+                    state.selection.insert(&path, ItemKind::Branch, &name);
+                    added += 1;
+                }
+            }
+            state.notify(format!("{added} branches added to the queue"));
+        }
+        KeyCode::Char('v') => {
+            if let Some((path, name)) = current {
+                let base = state
+                    .repo(&path)
+                    .and_then(|r| r.default_branch.clone())
+                    .filter(|d| d != &name);
+                state.open_diff(path, DiffTarget::Branch { name, base });
+            }
+        }
+        KeyCode::Enter => {
+            // Jump to the branch in its repository.
+            if let Some((path, name)) = current {
+                let index = state
+                    .repo(&path)
+                    .and_then(|r| r.branches.iter().position(|b| b.name == name))
+                    .unwrap_or(0);
+                state.repo_filter.clear();
+                state.focus_repo(path);
+                state.detail_index = index;
+                state.focus = Focus::Details;
+                state.tab = Tab::Repos;
+            }
+        }
+        _ => {}
+    }
+}
+
+fn queue_key(state: &mut AppState, code: KeyCode) {
+    let rows = views::queue_rows(state);
+    let last = rows.len().saturating_sub(1);
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.queue_cursor = state.queue_cursor.saturating_sub(1)
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.queue_cursor = (state.queue_cursor + 1).min(last)
+        }
+        KeyCode::Home => state.queue_cursor = 0,
+        KeyCode::End => state.queue_cursor = last,
+        KeyCode::Char(' ') | KeyCode::Char('d') | KeyCode::Delete | KeyCode::Backspace => {
+            if let Some((repo, op)) = rows.get(state.queue_cursor) {
+                state.selection.remove_operation(repo, op);
+            }
+        }
+        KeyCode::Enter => request_queue_run(state),
+        _ => {}
+    }
+}
+
+fn graph_key(state: &mut AppState, code: KeyCode) {
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.graph_scroll_y = state.graph_scroll_y.saturating_sub(1)
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            let lines = state
+                .focused()
+                .and_then(|r| r.graph_lines.as_ref())
+                .map_or(0, Vec::len);
+            if (state.graph_scroll_y as usize) + 1 < lines {
+                state.graph_scroll_y += 1;
+            }
+        }
+        KeyCode::Right => state.graph_scroll_x = state.graph_scroll_x.saturating_add(2),
+        KeyCode::Left if state.graph_scroll_x > 0 => {
+            state.graph_scroll_x = state.graph_scroll_x.saturating_sub(2);
+        }
+        KeyCode::Left | KeyCode::Esc | KeyCode::Char('g') => {
+            state.graph_maximized = false;
+            state.focus = Focus::Details;
+            if code == KeyCode::Char('g') {
+                state.show_graph = false;
+            }
+        }
+        KeyCode::Char('f') | KeyCode::Char('m') => state.graph_maximized = !state.graph_maximized,
+        _ => {}
+    }
+}
+
+/// Selects merged and gone branches in the given repositories.
+fn smart_select(state: &mut AppState, repos: &[PathBuf]) {
+    let mut added = 0;
+    for path in repos {
+        let Some(repo) = state.repo(path) else {
+            continue;
+        };
+        let names: Vec<String> = repo
+            .branches
+            .iter()
+            .filter(|b| crate::cleanup::is_smart_candidate(repo, b, &state.config))
+            .map(|b| b.name.clone())
+            .collect();
+        for name in names {
+            if !state.selection.contains(path, ItemKind::Branch, &name) {
+                state.selection.insert(path, ItemKind::Branch, &name);
+                added += 1;
+            }
+        }
+    }
+    if added == 0 {
+        state.notify("No merged or gone branches to add");
+    } else {
+        state.notify(format!("{added} merged/gone branches added to the queue"));
+    }
 }
