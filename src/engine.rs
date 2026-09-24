@@ -28,7 +28,10 @@ pub enum Operation {
     },
     PruneRemotes,
     GarbageCollect,
-    DeepClean,
+    /// Removes untracked and ignored files, except those matching `keep`.
+    DeepClean {
+        keep: Vec<String>,
+    },
 }
 
 impl Operation {
@@ -39,7 +42,7 @@ impl Operation {
             Operation::RemoveWorktree { path, .. } => format!("remove worktree {path}"),
             Operation::PruneRemotes => "prune remote-tracking branches".into(),
             Operation::GarbageCollect => "garbage collect".into(),
-            Operation::DeepClean => "deep clean untracked and ignored files".into(),
+            Operation::DeepClean { .. } => "deep clean untracked and ignored files".into(),
         }
     }
 }
@@ -206,12 +209,12 @@ async fn run(
                 Err(e) => (Err(e), 0),
             }
         }
-        Operation::DeepClean => {
-            let preview = git(deep_clean_args(true)).await.unwrap_or_default();
+        Operation::DeepClean { keep } => {
+            let preview = git(deep_clean_args(true, keep)).await.unwrap_or_default();
             let freed: u64 = deep_clean_paths(&preview)
                 .map(|p| sys.get_size(&repo.join(p)).unwrap_or(0))
                 .sum();
-            let outcome = git(deep_clean_args(false))
+            let outcome = git(deep_clean_args(false, keep))
                 .await
                 .map(|out| format!("removed {} path(s)", deep_clean_paths(&out).count()));
             let freed = if outcome.is_ok() { freed } else { 0 };
@@ -221,12 +224,19 @@ async fn run(
 }
 
 /// `git clean` arguments for a deep clean (untracked and ignored files).
-pub fn deep_clean_args(dry_run: bool) -> Vec<String> {
-    let mode = if dry_run { "-nxdff" } else { "-xdff" };
-    ["clean", mode, "--exclude=.git"]
+/// A single `-f` leaves nested repositories alone: they are separate projects.
+/// Paths matching a `keep` pattern survive (`-e` still applies with `-x`).
+pub fn deep_clean_args(dry_run: bool, keep: &[String]) -> Vec<String> {
+    let mode = if dry_run { "-n" } else { "-f" };
+    let mut args: Vec<String> = ["clean", "-x", "-d", mode]
         .iter()
         .map(|s| s.to_string())
-        .collect()
+        .collect();
+    for pattern in keep {
+        args.push("-e".into());
+        args.push(pattern.clone());
+    }
+    args
 }
 
 /// Paths listed by `git clean` ("Would remove x" / "Removing x").
@@ -379,20 +389,54 @@ mod tests {
         let path = PathBuf::from("/fake/repo");
         mock.add_command_output(
             &path,
-            &["clean", "-nxdff", "--exclude=.git"],
-            Ok("Would remove build/\nWould remove .env\n".into()),
+            &["clean", "-x", "-d", "-n", "-e", ".env"],
+            Ok("Would remove build/\nWould remove dist/\n".into()),
         );
         mock.add_command_output(
             &path,
-            &["clean", "-xdff", "--exclude=.git"],
-            Ok("Removing build/\nRemoving .env\n".into()),
+            &["clean", "-x", "-d", "-f", "-e", ".env"],
+            Ok("Removing build/\nRemoving dist/\n".into()),
         );
         mock.file_sizes.insert(path.join("build/"), 500);
-        mock.file_sizes.insert(path.join(".env"), 20);
+        mock.file_sizes.insert(path.join("dist/"), 20);
 
-        let results = execute(plan(vec![Operation::DeepClean]), false, mock, None).await;
+        let op = Operation::DeepClean {
+            keep: vec![".env".into()],
+        };
+        let results = execute(plan(vec![op]), false, mock, None).await;
         assert_eq!(results[0].outcome.as_deref(), Ok("removed 2 path(s)"));
         assert_eq!(results[0].freed_bytes, 520);
+    }
+
+    /// Nested repositories and kept files survive a real deep clean.
+    #[tokio::test]
+    async fn deep_clean_spares_nested_repos_and_kept_files() {
+        let repo = crate::test_support::TempRepo::new("deepclean");
+        repo.commit(".gitignore", "build/\n");
+        std::fs::create_dir_all(repo.path.join("build")).unwrap();
+        std::fs::write(repo.path.join("build/out.bin"), "x").unwrap();
+        std::fs::write(repo.path.join(".env"), "SECRET=1").unwrap();
+        let nested = repo.path.join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&nested)
+            .status()
+            .unwrap();
+        std::fs::write(nested.join("work.txt"), "keep me").unwrap();
+
+        let plans = vec![RepoPlan {
+            repo: repo.path.clone(),
+            operations: vec![Operation::DeepClean {
+                keep: vec![".env".into()],
+            }],
+        }];
+        let results = execute(plans, false, crate::sys::RealSystem, None).await;
+
+        assert!(results[0].is_ok(), "{:?}", results[0].outcome);
+        assert!(!repo.path.join("build").exists());
+        assert!(repo.path.join(".env").exists());
+        assert!(nested.join("work.txt").exists());
     }
 
     #[tokio::test]

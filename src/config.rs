@@ -19,6 +19,8 @@ pub struct Config {
     /// Branches that can never be selected for deletion. `*` and `?` wildcards.
     /// The default branch and checked-out branches are always protected too.
     pub protected_branches: Vec<String>,
+    /// Ignored files that a deep clean must never delete (gitignore patterns).
+    pub deep_clean_keep: Vec<String>,
 }
 
 impl Default for Config {
@@ -30,6 +32,9 @@ impl Default for Config {
                 .map(String::from)
                 .to_vec(),
             protected_branches: ["main", "master", "develop", "trunk", "release/*"]
+                .map(String::from)
+                .to_vec(),
+            deep_clean_keep: [".env", ".env.*", ".idea/", ".vscode/"]
                 .map(String::from)
                 .to_vec(),
         }
@@ -44,6 +49,9 @@ const TEMPLATE: &str = r#"# Sloth configuration — https://github.com/AymericCh
 # Branches that can never be selected for deletion (`*` and `?` wildcards).
 # The default branch and checked-out branches are always protected.
 protected_branches = ["main", "master", "develop", "trunk", "release/*"]
+
+# Untracked or ignored files a deep clean must never delete (gitignore syntax).
+deep_clean_keep = [".env", ".env.*", ".idea/", ".vscode/"]
 
 # Directory names skipped while scanning for repositories.
 scan_exclude = ["node_modules", "target", ".venv", "vendor"]

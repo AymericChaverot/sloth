@@ -56,7 +56,10 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
             } else {
                 state.selected_repositories.len()
             };
-            format!("Deep clean (git clean -xdff) {} repo(s)", n)
+            format!(
+                "Deep clean untracked & ignored files in {} repo(s) (nested repos and keep-list spared)",
+                n
+            )
         }
     };
 

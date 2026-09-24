@@ -135,9 +135,11 @@ pub fn run_tui(
                     .collect()
             };
             let tx_preview = tx.clone();
+            let args = crate::engine::deep_clean_args(true, &state.config.deep_clean_keep);
             std::thread::spawn(move || {
                 use crate::sys::GitExecutor as _;
                 let sys = crate::sys::RealSystem;
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
                 let mut preview: Vec<String> = Vec::new();
                 for path in &paths {
                     let label = path
@@ -145,7 +147,7 @@ pub fn run_tui(
                         .unwrap_or_default()
                         .to_string_lossy()
                         .to_string();
-                    match sys.run_git_command(path, &["clean", "-nxdff", "--exclude=.git"]) {
+                    match sys.run_git_command(path, &args) {
                         Ok(out) => {
                             for line in out.lines() {
                                 preview.push(format!("[{}] {}", label, line));
@@ -345,7 +347,9 @@ fn build_plans(state: &AppState, action: UiAction) -> Vec<crate::engine::RepoPla
                 }
                 UiAction::PruneRemotes => vec![Operation::PruneRemotes],
                 UiAction::GarbageCollect => vec![Operation::GarbageCollect],
-                UiAction::DeepClean => vec![Operation::DeepClean],
+                UiAction::DeepClean => vec![Operation::DeepClean {
+                    keep: state.config.deep_clean_keep.clone(),
+                }],
             };
             RepoPlan {
                 repo: repo.path.clone(),
