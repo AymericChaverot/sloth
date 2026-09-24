@@ -422,6 +422,16 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             .block(detail_block)
             .alignment(ratatui::layout::Alignment::Center);
         f.render_widget(p, area);
+    } else if let Some(error) = state
+        .repositories
+        .get(state.repo_index)
+        .and_then(|r| r.error.as_deref())
+    {
+        let p = Paragraph::new(format!("Analysis failed: {error}"))
+            .style(Style::default().fg(theme.error))
+            .block(detail_block)
+            .wrap(ratatui::widgets::Wrap { trim: true });
+        f.render_widget(p, area);
     } else {
         let details_list = List::new(detail_items).block(detail_block);
 

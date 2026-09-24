@@ -8,6 +8,10 @@ pub enum ScannerEvent {
     RepoFound(PathBuf),
     ScanComplete,
     RepoAnalyzed(RepoStatus),
+    RepoFailed {
+        path: PathBuf,
+        error: String,
+    },
     /// Running estimate while untracked files are being measured.
     SizePartial {
         path: PathBuf,

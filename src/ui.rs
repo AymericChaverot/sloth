@@ -56,6 +56,13 @@ pub fn run_tui(
                     }
                     state.analyzed_count += 1;
                 }
+                ScannerEvent::RepoFailed { path, error } => {
+                    if let Some(repo) = state.repositories.iter_mut().find(|r| r.path == path) {
+                        repo.analyzed = true;
+                        repo.error = Some(error);
+                    }
+                    state.analyzed_count += 1;
+                }
                 ScannerEvent::SizePartial {
                     path,
                     size_bytes,

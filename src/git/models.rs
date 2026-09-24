@@ -96,6 +96,8 @@ pub struct RepoStatus {
     pub worktrees: Vec<WorktreeInfo>,
     pub graph_lines: Option<Vec<String>>,
     pub analyzed: bool,
+    /// Set when the analysis failed.
+    pub error: Option<String>,
     pub size_bytes: Option<u64>,
     pub untracked_size_bytes: Option<u64>,
     pub size_finalized: bool,
@@ -115,6 +117,7 @@ impl RepoStatus {
             worktrees: Vec::new(),
             graph_lines: None,
             analyzed: false,
+            error: None,
             size_bytes: None,
             untracked_size_bytes: None,
             size_finalized: false,

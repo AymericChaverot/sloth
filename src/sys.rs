@@ -1,7 +1,6 @@
 use std::path::Path;
 
 pub trait FileSystem {
-    fn exists(&self, path: &Path) -> bool;
     fn get_size(&self, path: &Path) -> std::io::Result<u64>;
 }
 
@@ -38,10 +37,6 @@ fn git_command() -> std::process::Command {
 pub struct RealSystem;
 
 impl FileSystem for RealSystem {
-    fn exists(&self, path: &Path) -> bool {
-        path.exists()
-    }
-
     /// Apparent size of a file or directory tree. Symlinks (and Windows
     /// junctions) are counted as links, never followed: following them could
     /// count data outside the repository, twice, or loop forever.
@@ -155,8 +150,6 @@ pub mod mock {
     #[derive(Clone)]
     pub struct MockSystem {
         pub file_sizes: HashMap<PathBuf, u64>,
-        pub directories: Vec<PathBuf>,
-        pub files: Vec<PathBuf>,
         pub command_outputs: HashMap<(PathBuf, Vec<String>), Result<String, String>>,
     }
 
@@ -164,8 +157,6 @@ pub mod mock {
         pub fn new() -> Self {
             Self {
                 file_sizes: HashMap::new(),
-                directories: Vec::new(),
-                files: Vec::new(),
                 command_outputs: HashMap::new(),
             }
         }
@@ -198,11 +189,6 @@ pub mod mock {
     const STDIN_MARKER: &str = "<stdin>";
 
     impl FileSystem for MockSystem {
-        fn exists(&self, path: &Path) -> bool {
-            self.files.contains(&path.to_path_buf())
-                || self.directories.contains(&path.to_path_buf())
-        }
-
         fn get_size(&self, path: &Path) -> std::io::Result<u64> {
             if let Some(&size) = self.file_sizes.get(path) {
                 Ok(size)
