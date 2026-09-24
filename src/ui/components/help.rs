@@ -58,7 +58,11 @@ pub fn render_status_bar(f: &mut Frame, state: &AppState, area: Rect) {
     let mut left = Vec::new();
     if state.editing_filter {
         left.push(Span::styled("Filter: ", key));
-        left.push(Span::raw(format!("{}▏", state.repo_filter)));
+        let text = match state.tab {
+            crate::ui::state::Tab::Branches => &state.branch_query,
+            _ => &state.repo_filter,
+        };
+        left.push(Span::raw(format!("{text}▏")));
         left.push(Span::styled("  Enter/Esc done", desc));
     } else {
         for (k, d) in keymap::hints(state) {

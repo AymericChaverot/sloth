@@ -404,3 +404,13 @@ fn clean_and_quit_are_always_visible() {
         );
     }
 }
+
+#[test]
+fn branch_search_is_echoed_in_the_status_bar() {
+    let mut state = fixture_state();
+    state.tab = Tab::Branches;
+    press(&mut state, "/log");
+    let screen = render(&mut state, 100, 10);
+    assert!(screen.lines().last().unwrap().contains("Filter: log"));
+    assert!(state.repo_filter.is_empty());
+}
