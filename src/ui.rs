@@ -310,7 +310,9 @@ pub fn run_tui(
 
         // If 'CleanRepo', it only applies to the currently focused repository (not bulk)
         if matches!(action, UiAction::CleanRepo) || state.selected_repositories.is_empty() {
-            paths.push(state.repositories[state.repo_index].path.clone());
+            if let Some(repo) = state.repositories.get(state.repo_index) {
+                paths.push(repo.path.clone());
+            }
         } else {
             // Bulk action triggered
             for idx in &state.selected_repositories {
@@ -318,6 +320,10 @@ pub fn run_tui(
                     paths.push(repo.path.clone());
                 }
             }
+        }
+
+        if paths.is_empty() {
+            return Ok(None);
         }
 
         let branches = state

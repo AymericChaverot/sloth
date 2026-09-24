@@ -190,10 +190,14 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
             KeyCode::Enter if state.focus == Focus::Details => {
                 state.pending_action = Some(UiAction::CleanRepo);
             }
-            KeyCode::Char('p') if state.focus == Focus::Repositories => {
+            KeyCode::Char('p')
+                if state.focus == Focus::Repositories && !state.repositories.is_empty() =>
+            {
                 state.pending_action = Some(UiAction::PruneRemotes);
             }
-            KeyCode::Char('c') if state.focus == Focus::Repositories => {
+            KeyCode::Char('c')
+                if state.focus == Focus::Repositories && !state.repositories.is_empty() =>
+            {
                 state.pending_action = Some(UiAction::GarbageCollect);
             }
             KeyCode::Char('t') => {
