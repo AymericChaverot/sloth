@@ -45,7 +45,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
                     let mut spans = vec![Span::raw(format!("  {}", op.describe()))];
                     if let Some(warning) = crate::cleanup::operation_warning(repo, op) {
                         spans.push(Span::styled(
-                            format!("  ⚠ {warning}"),
+                            format!("  ! {warning}"),
                             Style::default().fg(theme.primary),
                         ));
                     }

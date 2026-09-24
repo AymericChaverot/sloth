@@ -62,8 +62,8 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
             )));
         }
         let (mark, detail, color) = match &result.outcome {
-            Ok(msg) => ("✔", msg.as_str(), theme.success),
-            Err(err) => ("✘", err.as_str(), theme.error),
+            Ok(msg) => ("✓", msg.as_str(), theme.success),
+            Err(err) => ("✗", err.as_str(), theme.error),
         };
         lines.push(Line::from(vec![
             Span::styled(format!("  {mark} "), Style::default().fg(color)),

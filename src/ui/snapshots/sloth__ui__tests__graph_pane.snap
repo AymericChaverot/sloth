@@ -2,7 +2,7 @@
 source: src/ui/tests.rs
 expression: "render(&mut state, 120, 20)"
 ---
-"🦥 sloth v0.2.0  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branches                   [Default]" Hidden by multi-width symbols: [(1, " ")]
+"sloth v0.2.0  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branches                      [Default]"
 " 1 Repos │ 2 Branches │ 3 Queue │ 4 Dashboard                                                                           "
 "┌ Repositories 3/3 ──────────────────────────────────┐┌Git Graph───────────────────────────────────────────────────────┐"
 "│    Repository    Branch       Cln .git     Reclaim ││● abc1234 - (HEAD -> main) merge feat/login (2 days ago) <dev>  │"
@@ -15,7 +15,7 @@ expression: "render(&mut state, 120, 20)"
 "│    Name         Status   Age  ↑↓        Diff       ││                                                                │"
 "│[-] main         default    1d                      ││                                                                │"
 "│[ ] feat/login   stale me  3mo    ↑0 ↓12            ││                                                                │"
-"│[ ] wip/cache    local ⚠    2d     ↑3 ↓0     +120 -4││                                                                │"
+"│[ ] wip/cache    local !    2d     ↑3 ↓0     +120 -4││                                                                │"
 "│[ ] fix/typo     stale sq  6mo    ↑2 ↓30            ││                                                                │"
 "│[ ] stash WIP on           40d                      ││                                                                │"
 "│[-] worktree api main                               ││                                                                │"

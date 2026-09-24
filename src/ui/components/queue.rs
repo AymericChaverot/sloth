@@ -35,7 +35,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
     if warnings > 0 {
         title.push(Span::styled(
-            format!("· ⚠ {warnings} need attention "),
+            format!("· ! {warnings} need attention "),
             Style::default().fg(theme.primary),
         ));
     }
@@ -97,7 +97,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             };
             let warning = repo
                 .and_then(|r| crate::cleanup::operation_warning(r, op))
-                .map(|w| Span::styled(format!("⚠ {w}"), Style::default().fg(theme.primary)))
+                .map(|w| Span::styled(format!("! {w}"), Style::default().fg(theme.primary)))
                 .unwrap_or_default();
             let size = match op {
                 Operation::RemoveWorktree { path, .. } => repo

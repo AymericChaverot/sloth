@@ -88,7 +88,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
             let branch = if let Some(error) = &repo.error {
                 Line::from(Span::styled(
-                    format!("⚠ {}", error.lines().next().unwrap_or("error")),
+                    format!("! {}", error.lines().next().unwrap_or("error")),
                     Style::default().fg(theme.error),
                 ))
             } else if !repo.analyzed {

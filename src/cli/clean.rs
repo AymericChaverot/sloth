@@ -182,7 +182,7 @@ fn print_plan(plans: &[RepoPlan], repos: &[RepoStatus], root: &Path) {
                 }
             }
             let warning = cleanup::operation_warning(repo, op)
-                .map(|w| format!("  ⚠ {w}"))
+                .map(|w| format!("  ! {w}"))
                 .unwrap_or_default();
             println!("  - {name} ({}){warning}", tags.join(", "));
         }
@@ -208,8 +208,8 @@ fn print_results(results: &[OpResult], root: &Path) {
             current = Some(res.repo.as_path());
         }
         match &res.outcome {
-            Ok(msg) => println!("  ✅ {}: {}", res.operation.describe(), msg),
-            Err(err) => println!("  ❌ {}: {}", res.operation.describe(), err),
+            Ok(msg) => println!("  ✓ {}: {}", res.operation.describe(), msg),
+            Err(err) => println!("  ✗ {}: {}", res.operation.describe(), err),
         }
     }
     let freed: u64 = results.iter().map(|r| r.freed_bytes).sum();

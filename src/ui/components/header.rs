@@ -37,7 +37,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     let dim = Style::default().fg(theme.text_dimmed);
     let sep = || Span::styled(" · ", dim);
 
-    let mut spans = vec![Span::raw("🦥 ")];
+    let mut spans = Vec::new();
     let title = "sloth";
     for (i, ch) in title.chars().enumerate() {
         let (r, g, b) = hsl_to_rgb(i as f64 / title.len() as f64 * 300.0);
@@ -98,7 +98,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     let mut right = Vec::new();
     if let Some(version) = &state.update_available {
         right.push(Span::styled(
-            format!("⬆ {version} available (u)  "),
+            format!("↑ {version} available (u)  "),
             Style::default().fg(theme.success),
         ));
     }

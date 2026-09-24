@@ -356,3 +356,36 @@ fn graph_pane_and_diff_modal() {
     ]);
     insta::assert_snapshot!("diff_modal", render(&mut state, 100, 14));
 }
+
+/// Sloth only prints ASCII and plain Unicode symbols: no emoji, which render
+/// inconsistently (width, color) across terminals and fonts.
+#[test]
+fn sources_contain_no_emoji() {
+    fn is_emoji(c: char) -> bool {
+        // Symbol blocks where most characters have an emoji presentation,
+        // minus the plain check marks used for results.
+        !matches!(c, '✓' | '✗')
+            && matches!(c as u32, 0x2600..=0x27BF | 0x2B00..=0x2BFF | 0x1F000..=0x1FFFF | 0xFE0F)
+    }
+    fn visit(dir: &std::path::Path, found: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit(&path, found);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let text = std::fs::read_to_string(&path).unwrap();
+                for (n, line) in text.lines().enumerate() {
+                    if line.chars().any(is_emoji) {
+                        found.push(format!("{}:{}: {}", path.display(), n + 1, line.trim()));
+                    }
+                }
+            }
+        }
+    }
+    let mut found = Vec::new();
+    visit(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut found,
+    );
+    assert!(found.is_empty(), "emoji found:\n{}", found.join("\n"));
+}

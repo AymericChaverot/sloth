@@ -80,14 +80,14 @@ pub fn run_tui(
         if state.is_updating {
             // Exit TUI cleanly before performing update
             leave_terminal()?;
-            println!("🔄 Updating sloth...");
+            println!("Updating sloth...");
             match crate::updater::perform_update() {
                 Ok(()) => {
-                    println!("✅ Update complete! Please restart sloth.");
+                    println!("✓ Update complete! Please restart sloth.");
                     std::process::exit(0);
                 }
                 Err(e) => {
-                    println!("❌ Update failed: {}", e);
+                    println!("✗ Update failed: {}", e);
                     // Re-enter TUI
                     enter_terminal(state.config.mouse)?;
                     terminal = Terminal::new(CrosstermBackend::new(stdout()))?;

@@ -194,7 +194,7 @@ pub(crate) fn branch_cells<'a>(
         ));
     }
     if b.has_unique_commits() && protection.is_none() {
-        status.push(badge("⚠", theme.primary));
+        status.push(badge("!", theme.primary));
     }
 
     let colored = |n: usize, color| {

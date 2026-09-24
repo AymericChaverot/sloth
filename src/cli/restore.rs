@@ -31,14 +31,14 @@ pub fn restore(ids: &[usize], last: bool) -> anyhow::Result<()> {
     let mut failures = 0;
     for i in selected {
         let Some(entry) = entries.get(i) else {
-            println!("❌ #{}: no such entry", i + 1);
+            println!("✗ #{}: no such entry", i + 1);
             failures += 1;
             continue;
         };
         match journal::restore(entry, &sys) {
-            Ok(msg) => println!("✅ #{} {}: {}", i + 1, entry.repo.display(), msg),
+            Ok(msg) => println!("✓ #{} {}: {}", i + 1, entry.repo.display(), msg),
             Err(err) => {
-                println!("❌ #{} {}: {}", i + 1, entry.repo.display(), err);
+                println!("✗ #{} {}: {}", i + 1, entry.repo.display(), err);
                 failures += 1;
             }
         }

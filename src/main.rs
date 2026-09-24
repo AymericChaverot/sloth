@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
 
     if let Some(Command::Clean(clean_args)) = args.command {
         if let Some(warning) = config_warning {
-            eprintln!("⚠ {warning} — using defaults.");
+            eprintln!("! {warning} — using defaults.");
         }
         return cli::clean(root, config, clean_args).await;
     }
