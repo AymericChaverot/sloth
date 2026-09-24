@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">🦥 Sloth</h1>
+  <h1 align="center">Sloth</h1>
   <p align="center"><strong>A blazing-fast TUI for cleaning up many Git repositories at once.</strong></p>
   <p align="center">
     Scan a directory tree, find merged, gone and stale branches in every project, queue them up across repositories, review, clean — and undo if needed.
@@ -23,19 +23,19 @@
 
 | Feature | Description |
 |---|---|
-| **🧺 Cross-repository queue** | Select branches, stashes and worktrees in any number of repositories, review them in one queue, run everything at once |
-| **🌿 Branches tab** | Every branch of every repository in one table, filtered by cleanable / merged / gone / stale / unmerged, sortable and searchable |
-| **🔍 Smart detection** | Merged branches — including **squash-** and **rebase-merged** ones — branches whose remote is gone, and stale branches |
-| **🛡️ Safety first** | Default, checked-out and configured branches are protected; unmerged or unpushed work and dirty worktrees are flagged before anything runs |
-| **↩️ Undo** | Every deleted branch and stash is journaled and can be restored with `sloth restore` |
-| **🧹 Maintenance** | Prune remote-tracking branches, garbage collect, deep clean untracked & ignored files (keeping `.env` & co. and nested repos) |
-| **⚡ Fast** | Parallel discovery, each repository analyzed as soon as it is found, one `git for-each-ref` per repository, background graph/diff loading |
-| **📋 Dashboard** | Cleanable branches, reclaimable space, `.git` sizes, and the repositories with the most to clean |
-| **🌳 Git graph & diffs** | Colored commit graph of all branches and branch/stash diffs, without blocking the UI |
-| **🖱️ Mouse & keyboard** | Tabs, tables, filters, sorting, vim keys, mouse clicks and wheel, `?` for the full key reference |
-| **🤖 Scriptable** | `sloth clean --merged --gone --dry-run` runs without the TUI |
-| **⚙️ Configurable** | TOML config file for the default path, protected branches, stale threshold, theme and more |
-| **🔄 Self-update** | Automatic update check on startup with one-key installation |
+| **Cross-repository queue** | Select branches, stashes and worktrees in any number of repositories, review them in one queue, run everything at once |
+| **Branches tab** | Every branch of every repository in one table, filtered by cleanable / merged / gone / stale / unmerged, sortable and searchable |
+| **Smart detection** | Merged branches — including **squash-** and **rebase-merged** ones — branches whose remote is gone, and stale branches |
+| **Safety first** | Default, checked-out and configured branches are protected; unmerged or unpushed work and dirty worktrees are flagged before anything runs |
+| **Undo** | Every deleted branch and stash is journaled and can be restored with `sloth restore` |
+| **Maintenance** | Prune remote-tracking branches, garbage collect, deep clean untracked & ignored files (keeping `.env` & co. and nested repos) |
+| **Fast** | Parallel discovery, each repository analyzed as soon as it is found, one `git for-each-ref` per repository, disk usage measured in the background without descending into ignored folders |
+| **Dashboard** | Cleanable branches, reclaimable space, `.git` sizes, and the repositories with the most to clean |
+| **Git graph & diffs** | Colored commit graph of all branches and branch/stash diffs, without blocking the UI |
+| **Mouse & keyboard** | Tabs, tables, filters, sorting, vim keys, mouse clicks and wheel, `?` for the full key reference |
+| **Scriptable** | `sloth clean --merged --gone --dry-run` runs without the TUI |
+| **Configurable** | TOML config file for the default path, protected branches, stale threshold, theme and more |
+| **Self-update** | Automatic update check on startup with one-key installation |
 
 ## Installation
 
@@ -125,7 +125,7 @@ Restoring works as long as Git has not garbage-collected the commits (two weeks 
 
 ## Keyboard Shortcuts
 
-Press `?` in the TUI for the full reference. Most tables also accept `j`/`k`, Page Up/Down, Home/End and the mouse.
+`x` (clean) and `q` (quit) are always shown at the bottom of the screen. Press `?` in the TUI for the full reference. Most tables also accept `j`/`k`, Page Up/Down, Home/End and the mouse.
 
 ### Global
 
@@ -149,7 +149,7 @@ Press `?` in the TUI for the full reference. Most tables also accept `j`/`k`, Pa
 | `a` | Queue merged & gone branches of the marked repositories |
 | `p` / `c` / `X` | Prune remote-tracking branches / garbage collect / deep clean (with confirmation and preview) |
 | `/` | Filter by path or remote |
-| `s` | Sort by path, cleanable branches, reclaimable space or `.git` size |
+| `s` | Sort by name (A-Z, the default), cleanable branches, reclaimable space or `.git` size |
 | `g` | Toggle the git graph (`f` fullscreen) |
 | `Esc` | Clear the filter, then the marks |
 
@@ -278,7 +278,6 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the data flow and design de
 | [`ratatui`](https://crates.io/crates/ratatui) / [`crossterm`](https://crates.io/crates/crossterm) | Terminal UI and I/O |
 | [`tokio`](https://crates.io/crates/tokio) | Async runtime & task spawning |
 | [`ignore`](https://crates.io/crates/ignore) | Fast `.gitignore`-respecting directory walking |
-| [`gix`](https://crates.io/crates/gix) | Git repository validation |
 | [`clap`](https://crates.io/crates/clap) | CLI parsing |
 | [`serde`](https://crates.io/crates/serde) / [`toml`](https://crates.io/crates/toml) / [`toml_edit`](https://crates.io/crates/toml_edit) / [`serde_json`](https://crates.io/crates/serde_json) | Configuration and journal |
 | [`ansi-to-tui`](https://crates.io/crates/ansi-to-tui) | Colored git output in the TUI |

@@ -15,7 +15,7 @@ graph LR
     S -->|RepoFound| W
     W --> G[Git analysis]
     G -->|RepoAnalyzed / RepoFailed| UI[TUI loop]
-    W --> Z[Size thread]
+    W --> Z[Size threads]
     Z -->|SizePartial / SizeComputed| UI
     UI --> L[Loaders: graph, diff, preview]
     L -->|GraphLoaded / DiffLoaded / DeepCleanPreview| UI
@@ -27,7 +27,7 @@ graph LR
 ```
 
 1. **Worker** (`worker.rs`) starts the **scanner** and analyzes each repository **as soon as it is discovered**, with concurrency bounded by the number of CPUs. Results are streamed as `RepoAnalyzed` (or `RepoFailed`) events in completion order.
-2. After each analysis, the repository is queued on a dedicated **size thread** that measures `.git`, the files a deep clean would remove (`SizePartial` while measuring) and linked worktrees (`SizeComputed`). Sizes are measured one repository at a time to avoid I/O thrashing.
+2. After each analysis, the repository is queued for **size measurement** by 4 threads: `.git`, the paths a deep clean would remove (`SizePartial` while measuring) and linked worktrees (`SizeComputed`). Reclaimable paths come from `git ls-files --others [--ignored] --directory`, which does not descend into ignored folders (`git clean -n` does, and can take minutes on a `node_modules` with a junction back to the repository).
 3. The **TUI loop** (`ui.rs`) applies events to `AppState`, starts **loaders** for what the current view needs (graph, diff, deep-clean preview) on worker threads, and redraws only when an input or a background event changed something, or while a spinner is visible.
 4. The user builds a **selection** (`ui/selection.rs`) — the cleanup queue — from any tab and repository. Confirming turns it into **plans** (one per repository) that the **engine** runs in the background, reporting each operation as `OperationDone`.
 5. Successful deletions of branches and stashes are appended to the **journal**. When the run finishes, cleaned items leave the queue and the affected repositories are **refreshed** through the worker.
@@ -51,8 +51,8 @@ graph LR
 
 | Trait | Methods | Purpose |
 |---|---|---|
-| `GitExecutor` | `run_git_command()`, `run_git_command_async()`, `run_git_command_with_input()`, `open_repo()` | All Git CLI interactions |
-| `FileSystem` | `get_size()` | Disk usage (never follows symlinks or junctions) |
+| `GitExecutor` | `run_git_command()`, `run_git_command_async()`, `run_git_command_with_input()` | All Git CLI interactions |
+| `FileSystem` | `get_size()`, `is_repository()` | Disk usage (never follows symlinks or junctions), nested repository detection |
 
 - `RealSystem` runs `git` with `LC_ALL=C` (output is parsed), no terminal prompts and no pager
 - `MockSystem` (`#[cfg(test)]`) maps `(path, args[, stdin])` to canned outputs
@@ -73,7 +73,7 @@ graph LR
 | `stats.rs` | `rev-list` fallback, `--shortstat` parsing, size and age formatting |
 
 **Design decisions:**
-- Git data comes from the `git` CLI for fidelity with the user's Git; `gix` only validates repositories
+- Git data comes from the `git` CLI for fidelity with the user's Git; the first `for-each-ref` also checks the directory is a usable repository
 - A branch is "merged" when it has no commit ahead of the default branch, which also covers branches checked out in linked worktrees
 - Diff stats are only computed for branches that are ahead
 
@@ -97,7 +97,7 @@ graph LR
 
 ### `worker.rs` — Background Pipeline
 
-- `Worker::scan` (discovery + analysis), `Worker::refresh` (re-analysis of given repositories), and the size thread
+- `Worker::scan` (discovery + analysis), `Worker::refresh` (re-analysis of given repositories), and the size threads
 - Everything is reported through `ScannerEvent`s on a `std::sync::mpsc` channel, consumed by the synchronous TUI loop
 
 ### `cli/` — Headless Commands
@@ -148,7 +148,7 @@ Main thread (TUI loop)            Tokio runtime / threads
     │  Worker::scan ──────────────────► │── scanner (spawn_blocking, parallel walk)
     │                                   │── analysis per repository (spawn_blocking, ≤ CPUs)
     │ ◄──── RepoFound / RepoAnalyzed ── │
-    │                                   │── size thread (sequential)
+    │                                   │── size threads (4)
     │ ◄──── SizePartial / SizeComputed ─│
     │  loaders ───────────────────────► │── graph / diff / preview threads
     │ ◄──── GraphLoaded / DiffLoaded ── │
