@@ -1,8 +1,9 @@
 ---
 source: src/ui/tests.rs
+assertion_line: 357
 expression: "render(&mut state, 100, 14)"
 ---
-"sloth v0.2.0  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branches  [Default]"
+"sloth v0.2.1  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branches  [Default]"
 " 1 Repos │┌ Diff (1/2 lines — Up/Down/PgUp/PgDn/Home, Esc/v to close) ───────────────────┐          "
 "┌ Reposito│diff --git a/login.rs b/login.rs                                              │─────────┐"
 "│    Repo │+fn login() {}                                                                │(2 days a│"
