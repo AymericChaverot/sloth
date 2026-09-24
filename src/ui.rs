@@ -35,6 +35,7 @@ pub fn run_tui(
     rx: Receiver<ScannerEvent>,
     tx: Sender<ScannerEvent>,
 ) -> TuiResult {
+    install_panic_hook();
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
 
@@ -96,6 +97,17 @@ pub fn run_tui(
         .action
         .take()
         .map(|action| build_plans(&state, action)))
+}
+
+/// Leaves raw mode and the alternate screen before a panic message is
+/// printed, so a crash does not leave the terminal unusable.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = stdout().execute(LeaveAlternateScreen);
+        default_hook(info);
+    }));
 }
 
 /// Applies a background event to the state.
