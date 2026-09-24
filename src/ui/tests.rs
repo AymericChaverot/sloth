@@ -335,3 +335,24 @@ async fn end_to_end_on_real_repositories() {
     assert_eq!(state.totals().cleanable_branches, 0);
     render(&mut state, 120, 30);
 }
+
+#[test]
+fn graph_pane_and_diff_modal() {
+    let mut state = fixture_state();
+    state.repositories[0].graph_lines = Some(vec![
+        "* \u{1b}[33mabc1234\u{1b}[m - (HEAD -> main) merge feat/login (2 days ago) <dev>".into(),
+        "|\\  ".into(),
+        "| * \u{1b}[33mdef5678\u{1b}[m - login form (3 weeks ago) <dev>".into(),
+        "|/  ".into(),
+        "* \u{1b}[33m0123abc\u{1b}[m - init (1 year ago) <dev>".into(),
+    ]);
+    state.show_graph = true;
+    insta::assert_snapshot!("graph_pane", render(&mut state, 120, 20));
+
+    press(&mut state, "→↓v");
+    state.diff_lines = Some(vec![
+        "diff --git a/login.rs b/login.rs".into(),
+        "\u{1b}[32m+fn login() {}\u{1b}[m".into(),
+    ]);
+    insta::assert_snapshot!("diff_modal", render(&mut state, 100, 14));
+}

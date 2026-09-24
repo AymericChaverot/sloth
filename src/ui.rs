@@ -359,20 +359,18 @@ fn draw_repos_tab(f: &mut Frame, state: &mut AppState, area: ratatui::layout::Re
         components::graph::render(f, state, area);
         return;
     }
-    let constraints = if state.show_graph {
-        vec![
-            Constraint::Percentage(30),
-            Constraint::Percentage(30),
-            Constraint::Percentage(40),
-        ]
-    } else {
-        vec![Constraint::Percentage(45), Constraint::Percentage(55)]
-    };
-    let panes = Layout::horizontal(constraints).split(area);
-    components::repositories::render(f, state, panes[0]);
-    components::details::render(f, state, panes[1]);
+    let [left, right] =
+        Layout::horizontal([Constraint::Percentage(45), Constraint::Percentage(55)]).areas(area);
     if state.show_graph {
-        components::graph::render(f, state, panes[2]);
+        // Keep the tables readable: stack them and give the graph the right side.
+        let [repos, details] =
+            Layout::vertical([Constraint::Percentage(40), Constraint::Percentage(60)]).areas(left);
+        components::repositories::render(f, state, repos);
+        components::details::render(f, state, details);
+        components::graph::render(f, state, right);
+    } else {
+        components::repositories::render(f, state, left);
+        components::details::render(f, state, right);
     }
 }
 
