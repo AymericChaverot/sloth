@@ -1,8 +1,9 @@
 ---
 source: src/ui/tests.rs
+assertion_line: 264
 expression: "render(&mut state, 100, 20)"
 ---
-"sloth v0.2.0  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branches  [Default]"
+"sloth vX.Y.Z  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branches  [Default]"
 " 1 Repos │ 2 Branches │ 3 Queue │ 4 Dashboard                                                       "
 "┌ Repositories ─────────┐┌ Cleanable branches ───┐┌ Reclaimable ──────────┐┌ .git total ───────────┐"
 "│           3           ││           3           ││        1.5 GB         ││       168.0 MB        │"
