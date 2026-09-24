@@ -79,7 +79,8 @@ pub const SECTIONS: &[(&str, &[Binding])] = &[
     ("Dashboard", DASHBOARD),
 ];
 
-/// The few bindings worth showing in the status bar for the current context.
+/// The few bindings worth showing in the status bar for the current context
+/// (`x` clean and `q` quit are always shown before them).
 pub fn hints(state: &AppState) -> &'static [Binding] {
     match state.tab {
         Tab::Repos => match state.focus {
@@ -96,11 +97,15 @@ pub fn hints(state: &AppState) -> &'static [Binding] {
                 ("Space", "select"),
                 ("a", "smart"),
                 ("v", "diff"),
-                ("x", "run queue"),
                 ("←", "back"),
                 ("?", "help"),
             ],
-            Focus::GitGraph => &[("↑↓←→", "scroll"), ("f", "fullscreen"), ("Esc", "back")],
+            Focus::GitGraph => &[
+                ("↑↓←→", "scroll"),
+                ("f", "fullscreen"),
+                ("Esc", "back"),
+                ("?", "help"),
+            ],
         },
         Tab::Branches => &[
             ("Space", "select"),
@@ -109,7 +114,7 @@ pub fn hints(state: &AppState) -> &'static [Binding] {
             ("s", "sort"),
             ("/", "search"),
             ("Enter", "open repo"),
-            ("x", "run queue"),
+            ("?", "help"),
         ],
         Tab::Queue => &[
             ("Space", "remove"),

@@ -8,11 +8,33 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
-/// Bottom line: context key hints on the left; toast or queue size on the right.
+/// Bottom line: the essential keys (always visible), context key hints, and
+/// a toast or the queue size on the right.
 pub fn render_status_bar(f: &mut Frame, state: &AppState, area: Rect) {
     let theme = crate::ui::theme::get_theme(state.theme_index);
     let key = Style::default().fg(theme.primary);
     let desc = Style::default().fg(theme.text_dimmed);
+
+    let bold_key = key.add_modifier(Modifier::BOLD);
+    let clean_label = if state.selection.is_empty() {
+        " clean ".to_string()
+    } else {
+        format!(" clean ({}) ", state.selection.len())
+    };
+    let essentials = Line::from(vec![
+        Span::styled(" x", bold_key),
+        Span::styled(
+            clean_label,
+            if state.selection.is_empty() {
+                desc
+            } else {
+                Style::default().fg(theme.merged)
+            },
+        ),
+        Span::styled(" q", bold_key),
+        Span::styled(" quit ", desc),
+        Span::styled("│", Style::default().fg(theme.border)),
+    ]);
 
     let right = if let Some(toast) = &state.toast {
         let color = match toast.level {
@@ -27,7 +49,7 @@ pub fn render_status_bar(f: &mut Frame, state: &AppState, area: Rect) {
         Line::from(vec![
             Span::styled("Queue: ", desc),
             Span::styled(state.selection.summary(), Style::default().fg(theme.merged)),
-            Span::styled(" (x run) ", desc),
+            Span::raw(" "),
         ])
     } else {
         Line::default()
@@ -45,9 +67,16 @@ pub fn render_status_bar(f: &mut Frame, state: &AppState, area: Rect) {
         }
     }
 
-    let [left_area, right_area] =
-        Layout::horizontal([Constraint::Min(0), Constraint::Length(right.width() as u16)])
-            .areas(area);
+    // The essential keys always win; a long toast is cut instead.
+    let essentials_width = essentials.width() as u16;
+    let right_width = (right.width() as u16).min(area.width.saturating_sub(essentials_width));
+    let [essentials_area, left_area, right_area] = Layout::horizontal([
+        Constraint::Length(essentials_width),
+        Constraint::Min(0),
+        Constraint::Length(right_width),
+    ])
+    .areas(area);
+    f.render_widget(Paragraph::new(essentials), essentials_area);
     f.render_widget(Paragraph::new(Line::from(left)), left_area);
     f.render_widget(
         Paragraph::new(right).alignment(Alignment::Right),

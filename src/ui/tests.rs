@@ -389,3 +389,18 @@ fn sources_contain_no_emoji() {
     );
     assert!(found.is_empty(), "emoji found:\n{}", found.join("\n"));
 }
+
+#[test]
+fn clean_and_quit_are_always_visible() {
+    for tab in Tab::ALL {
+        let mut state = fixture_state();
+        state.tab = tab;
+        state.warn("a long notification that takes a lot of room in the status bar");
+        let screen = render(&mut state, 60, 12);
+        let status = screen.lines().last().unwrap();
+        assert!(
+            status.starts_with("\" x clean  q quit │"),
+            "{tab:?}: {status}"
+        );
+    }
+}
