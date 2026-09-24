@@ -1,0 +1,16 @@
+---
+source: src/ui/tests.rs
+expression: "render(&mut state, 120, 12)"
+---
+"🦥 sloth v0.1.0  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branches                   [Default]" Hidden by multi-width symbols: [(1, " ")]
+" 1 Repos │ 2 Branches │ 3 Queue (4) │ 4 Dashboard                                                                       "
+"┌ Cleanup queue · 4 branches in 2 repos · ⚠ 1 need attention ──────────────────────────────────────────────────────────┐"
+"│Repository              Action          Item                              Warning                            Frees    │"
+"│api                     delete branch   feat/login                                                                    │"
+"│                        delete branch   fix/typo                                                                      │"
+"│                        delete branch   wip/cache                         ⚠ unmerged, unpushed commits                │"
+"│web                     delete branch   chore/deps                                                                    │"
+"│                                                                                                                      │"
+"│                                                                                                                      │"
+"└ Enter/x run all  Space/d remove  C clear ────────────────────────────────────────────────────────────────────────────┘"
+" Space remove  Enter run  C clear  ? help                                                 3 branches added to the queue "

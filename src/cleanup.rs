@@ -117,6 +117,20 @@ pub fn cleanup_operations<'a>(
     operations
 }
 
+/// What could be lost by running `op`, if anything.
+pub fn operation_warning(repo: &RepoStatus, op: &Operation) -> Option<&'static str> {
+    match op {
+        Operation::DeleteBranch { name, .. } => repo
+            .branches
+            .iter()
+            .find(|b| &b.name == name)
+            .filter(|b| b.has_unique_commits())
+            .map(|_| "unmerged, unpushed commits"),
+        Operation::RemoveWorktree { force: true, .. } => Some("uncommitted changes"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

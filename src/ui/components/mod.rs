@@ -7,6 +7,7 @@ pub mod execution_modal;
 pub mod graph;
 pub mod header;
 pub mod help;
+pub mod queue;
 pub mod repositories;
 pub mod tabs;
 

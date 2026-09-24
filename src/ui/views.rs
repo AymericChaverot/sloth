@@ -100,6 +100,21 @@ pub fn branch_rows(state: &AppState) -> Vec<(usize, usize)> {
     rows
 }
 
+/// Rows of the Queue tab: every operation the queue would run, per repository.
+pub fn queue_rows(state: &AppState) -> Vec<(std::path::PathBuf, crate::engine::Operation)> {
+    state
+        .selection
+        .plans(&state.repositories, &state.config)
+        .into_iter()
+        .flat_map(|plan| {
+            let repo = plan.repo;
+            plan.operations
+                .into_iter()
+                .map(move |op| (repo.clone(), op))
+        })
+        .collect()
+}
+
 /// One row of the details table.
 #[derive(Debug, Clone, Copy)]
 pub enum DetailRow<'a> {

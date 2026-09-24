@@ -13,13 +13,20 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
         .iter()
         .enumerate()
         .map(|(i, tab)| {
-            Line::from(vec![
+            let mut spans = vec![
                 Span::styled(
                     format!("{} ", i + 1),
                     Style::default().fg(theme.text_dimmed),
                 ),
                 Span::raw(tab.title()),
-            ])
+            ];
+            if *tab == Tab::Queue && !state.selection.is_empty() {
+                spans.push(Span::styled(
+                    format!(" ({})", state.selection.len()),
+                    Style::default().fg(theme.merged),
+                ));
+            }
+            Line::from(spans)
         })
         .collect();
     let tabs = Tabs::new(titles)

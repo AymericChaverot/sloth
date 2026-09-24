@@ -191,6 +191,27 @@ fn branches_tab_selects_across_repositories() {
 }
 
 #[test]
+fn queue_tab_reviews_items_of_several_repositories() {
+    let mut state = fixture_state();
+    state.tab = Tab::Branches;
+    press(&mut state, "a"); // 3 cleanable branches in api and web
+    state.tab = Tab::Repos;
+    press(&mut state, "→↓↓ "); // + wip/cache, which has unpushed work
+    state.tab = Tab::Queue;
+    insta::assert_snapshot!(render(&mut state, 120, 12));
+
+    press(&mut state, " "); // remove the first row
+    assert_eq!(state.selection.summary(), "3 branches in 2 repos");
+}
+
+#[test]
+fn empty_queue_explains_how_to_fill_it() {
+    let mut state = fixture_state();
+    state.tab = Tab::Queue;
+    insta::assert_snapshot!(render(&mut state, 100, 12));
+}
+
+#[test]
 fn dashboard_tab() {
     let mut state = fixture_state();
     state.tab = Tab::Dashboard;

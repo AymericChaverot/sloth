@@ -55,6 +55,13 @@ pub const BRANCHES: &[Binding] = &[
     ("Enter", "open the branch in its repository"),
 ];
 
+pub const QUEUE: &[Binding] = &[
+    ("↑↓", "move"),
+    ("Space / d", "remove from the queue"),
+    ("Enter / x", "review & run everything"),
+    ("C", "clear the queue"),
+];
+
 pub const DASHBOARD: &[Binding] = &[("1", "back to repositories")];
 
 pub const SECTIONS: &[(&str, &[Binding])] = &[
@@ -63,6 +70,7 @@ pub const SECTIONS: &[(&str, &[Binding])] = &[
     ("Details", DETAILS),
     ("Graph", GRAPH),
     ("Branches (all repositories)", BRANCHES),
+    ("Queue", QUEUE),
     ("Dashboard", DASHBOARD),
 ];
 
@@ -97,6 +105,12 @@ pub fn hints(state: &AppState) -> &'static [Binding] {
             ("/", "search"),
             ("Enter", "open repo"),
             ("x", "run queue"),
+        ],
+        Tab::Queue => &[
+            ("Space", "remove"),
+            ("Enter", "run"),
+            ("C", "clear"),
+            ("?", "help"),
         ],
         Tab::Dashboard => &[("1", "repos"), ("?", "help"), ("q", "quit")],
     }

@@ -87,6 +87,10 @@ impl Selection {
         self.repos.is_empty()
     }
 
+    pub fn len(&self) -> usize {
+        self.repos.values().map(RepoSelection::len).sum()
+    }
+
     pub fn repo_count(&self) -> usize {
         self.repos.len()
     }
@@ -141,13 +145,14 @@ impl Selection {
     /// Removes the items that were successfully cleaned up.
     pub fn forget_done(&mut self, results: &[OpResult]) {
         for result in results.iter().filter(|r| r.is_ok()) {
-            let (kind, id) = match &result.operation {
-                Operation::DeleteBranch { name, .. } => (ItemKind::Branch, name),
-                Operation::DropStash { sha, .. } => (ItemKind::Stash, sha),
-                Operation::RemoveWorktree { path, .. } => (ItemKind::Worktree, path),
-                _ => continue,
-            };
-            self.remove(&result.repo, kind, id);
+            self.remove_operation(&result.repo, &result.operation);
+        }
+    }
+
+    /// Removes the item an operation of `plans` was built from.
+    pub fn remove_operation(&mut self, repo: &Path, operation: &Operation) {
+        if let Some((kind, id)) = item_of(operation) {
+            self.remove(repo, kind, id);
         }
     }
 
@@ -170,6 +175,16 @@ impl Selection {
                 })
             })
             .collect()
+    }
+}
+
+/// The selection item a cleanup operation acts on.
+fn item_of(operation: &Operation) -> Option<(ItemKind, &str)> {
+    match operation {
+        Operation::DeleteBranch { name, .. } => Some((ItemKind::Branch, name)),
+        Operation::DropStash { sha, .. } => Some((ItemKind::Stash, sha)),
+        Operation::RemoveWorktree { path, .. } => Some((ItemKind::Worktree, path)),
+        _ => None,
     }
 }
 

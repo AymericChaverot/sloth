@@ -70,7 +70,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
                     format!("  - {}", op.describe()),
                     Style::default().fg(theme.error),
                 )];
-                if let Some(warning) = operation_warning(repo, op) {
+                if let Some(warning) = crate::cleanup::operation_warning(repo, op) {
                     spans.push(Span::styled(
                         format!("  ⚠ {warning}"),
                         Style::default().fg(theme.primary),
@@ -147,22 +147,4 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     let modal_area = super::centered_rect(55, 70, area);
     f.render_widget(Clear, modal_area);
     f.render_widget(paragraph, modal_area);
-}
-
-/// What could be lost by running `op`, if anything.
-pub fn operation_warning(
-    repo: &crate::git::RepoStatus,
-    op: &crate::engine::Operation,
-) -> Option<&'static str> {
-    use crate::engine::Operation;
-    match op {
-        Operation::DeleteBranch { name, .. } => repo
-            .branches
-            .iter()
-            .find(|b| &b.name == name)
-            .filter(|b| b.has_unique_commits())
-            .map(|_| "has commits that are neither merged nor pushed"),
-        Operation::RemoveWorktree { force: true, .. } => Some("uncommitted changes will be lost"),
-        _ => None,
-    }
 }

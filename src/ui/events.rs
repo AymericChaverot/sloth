@@ -57,6 +57,7 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent) {
             Focus::GitGraph => graph_key(state, key.code),
         },
         Tab::Branches => branches_key(state, key.code),
+        Tab::Queue => queue_key(state, key.code),
         Tab::Dashboard => {}
     }
 }
@@ -372,6 +373,28 @@ fn branches_key(state: &mut AppState, code: KeyCode) {
                 state.tab = Tab::Repos;
             }
         }
+        _ => {}
+    }
+}
+
+fn queue_key(state: &mut AppState, code: KeyCode) {
+    let rows = views::queue_rows(state);
+    let last = rows.len().saturating_sub(1);
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.queue_cursor = state.queue_cursor.saturating_sub(1)
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.queue_cursor = (state.queue_cursor + 1).min(last)
+        }
+        KeyCode::Home => state.queue_cursor = 0,
+        KeyCode::End => state.queue_cursor = last,
+        KeyCode::Char(' ') | KeyCode::Char('d') | KeyCode::Delete | KeyCode::Backspace => {
+            if let Some((repo, op)) = rows.get(state.queue_cursor) {
+                state.selection.remove_operation(repo, op);
+            }
+        }
+        KeyCode::Enter => request_queue_run(state),
         _ => {}
     }
 }

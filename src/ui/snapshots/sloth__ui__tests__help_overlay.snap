@@ -3,7 +3,7 @@ source: src/ui/tests.rs
 expression: "render(&mut state, 100, 45)"
 ---
 "🦥 sloth v0.1.0  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branche[Default]" Hidden by multi-width symbols: [(1, " ")]
-" 1 Repos │ 2 Branches │ 3 Dashboard                                                                 "
+" 1 Repos │ 2 Branches │ 3 Queue │ 4 Dashboard                                                       "
 "┌ Repositories 3/3 ─────────────────────────┐┌ api · github.com/acme/api ──────────────────────────┐"
 "│    Repo Branch    ┌ Keys — ? or Esc to close ────────────────────────────────┐        Diff       │"
 "│[ ] api  main ●    │Global                                                    │                   │"

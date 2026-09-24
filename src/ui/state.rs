@@ -85,16 +85,18 @@ impl Execution {
 pub enum Tab {
     Repos,
     Branches,
+    Queue,
     Dashboard,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 3] = [Tab::Repos, Tab::Branches, Tab::Dashboard];
+    pub const ALL: [Tab; 4] = [Tab::Repos, Tab::Branches, Tab::Queue, Tab::Dashboard];
 
     pub fn title(self) -> &'static str {
         match self {
             Tab::Repos => "Repos",
             Tab::Branches => "Branches",
+            Tab::Queue => "Queue",
             Tab::Dashboard => "Dashboard",
         }
     }
@@ -263,6 +265,8 @@ pub struct AppState {
     pub branch_query: String,
     pub branch_cursor: usize,
     pub branch_table: TableState,
+    pub queue_cursor: usize,
+    pub queue_table: TableState,
     pub graph_scroll_y: u16,
     pub graph_scroll_x: u16,
     /// Cleanup queue: items selected in any repository.
@@ -317,6 +321,8 @@ impl AppState {
             branch_query: String::new(),
             branch_cursor: 0,
             branch_table: TableState::default(),
+            queue_cursor: 0,
+            queue_table: TableState::default(),
             graph_scroll_y: 0,
             graph_scroll_x: 0,
             selection: Default::default(),
