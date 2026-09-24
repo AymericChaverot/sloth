@@ -41,7 +41,10 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             } else {
                 "   "
             };
-            let checkbox = if selected_b.contains(&branch.name) {
+            let protection = crate::cleanup::branch_protection(repo, branch, &state.config);
+            let checkbox = if protection.is_some() {
+                "🔒  "
+            } else if selected_b.contains(&branch.name) {
                 "[x] "
             } else {
                 "[ ] "
@@ -86,6 +89,13 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                         crate::git::stats::format_age(ts, crate::git::stats::now_ts())
                     ),
                     Style::default().fg(theme.secondary),
+                ));
+            }
+
+            if let Some(p) = protection {
+                spans.push(Span::styled(
+                    format!(" [{}]", p.label()),
+                    Style::default().fg(theme.text_dimmed),
                 ));
             }
 
@@ -257,7 +267,9 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             } else {
                 "   "
             };
-            let checkbox = if selected_wt.contains(&wt.path) {
+            let checkbox = if crate::cleanup::worktree_protection(wt).is_some() {
+                "🔒  "
+            } else if selected_wt.contains(&wt.path) {
                 "[x] "
             } else {
                 "[ ] "

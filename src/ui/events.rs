@@ -130,9 +130,13 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                     let b_len = repo.branches.len();
                     if state.detail_index < b_len {
                         // It's a branch
-                        let b_name = repo.branches[state.detail_index].name.clone();
+                        let branch = &repo.branches[state.detail_index];
+                        let protected =
+                            crate::cleanup::branch_protection(repo, branch, &state.config)
+                                .is_some();
+                        let b_name = branch.name.clone();
                         let set = state.selected_branches.entry(state.repo_index).or_default();
-                        if set.contains(&b_name) {
+                        if protected || set.contains(&b_name) {
                             set.remove(&b_name);
                         } else {
                             set.insert(b_name);
@@ -151,7 +155,10 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                         } else {
                             // It's a worktree
                             let w_idx = s_idx.saturating_sub(repo.stashes.len());
-                            if w_idx < repo.worktrees.len() {
+                            if w_idx < repo.worktrees.len()
+                                && crate::cleanup::worktree_protection(&repo.worktrees[w_idx])
+                                    .is_none()
+                            {
                                 let w_path = repo.worktrees[w_idx].path.clone();
                                 let set = state
                                     .selected_worktrees
@@ -173,7 +180,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                 let repo = &state.repositories[state.repo_index];
                 let set = state.selected_branches.entry(state.repo_index).or_default();
                 for branch in &repo.branches {
-                    if branch.is_dead || branch.is_fully_merged() {
+                    if crate::cleanup::is_smart_candidate(repo, branch, &state.config) {
                         set.insert(branch.name.clone());
                     }
                 }
@@ -184,7 +191,9 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                 let repo = &state.repositories[state.repo_index];
                 let set = state.selected_branches.entry(state.repo_index).or_default();
                 for branch in &repo.branches {
-                    set.insert(branch.name.clone());
+                    if crate::cleanup::branch_protection(repo, branch, &state.config).is_none() {
+                        set.insert(branch.name.clone());
+                    }
                 }
             }
             KeyCode::Enter if state.focus == Focus::Details => {

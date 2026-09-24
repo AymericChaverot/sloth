@@ -16,6 +16,9 @@ pub struct Config {
     pub default_path: Option<String>,
     /// Directory names skipped while scanning for repositories.
     pub scan_exclude: Vec<String>,
+    /// Branches that can never be selected for deletion. `*` and `?` wildcards.
+    /// The default branch and checked-out branches are always protected too.
+    pub protected_branches: Vec<String>,
 }
 
 impl Default for Config {
@@ -26,6 +29,9 @@ impl Default for Config {
             scan_exclude: ["node_modules", "target", ".venv", "vendor"]
                 .map(String::from)
                 .to_vec(),
+            protected_branches: ["main", "master", "develop", "trunk", "release/*"]
+                .map(String::from)
+                .to_vec(),
         }
     }
 }
@@ -34,6 +40,10 @@ const TEMPLATE: &str = r#"# Sloth configuration — https://github.com/AymericCh
 
 # Directory scanned when --path is not given.
 # default_path = "~/Projects"
+
+# Branches that can never be selected for deletion (`*` and `?` wildcards).
+# The default branch and checked-out branches are always protected.
+protected_branches = ["main", "master", "develop", "trunk", "release/*"]
 
 # Directory names skipped while scanning for repositories.
 scan_exclude = ["node_modules", "target", ".venv", "vendor"]
@@ -130,6 +140,30 @@ fn migrate_legacy_theme() -> Option<String> {
         .map(|t| t.name.to_string())
 }
 
+/// Minimal glob: `*` matches any run of characters (including `/`), `?` one character.
+pub fn glob_match(pattern: &str, text: &str) -> bool {
+    let p: Vec<char> = pattern.chars().collect();
+    let t: Vec<char> = text.chars().collect();
+    let (mut pi, mut ti) = (0, 0);
+    let mut backtrack: Option<(usize, usize)> = None;
+    while ti < t.len() {
+        if pi < p.len() && (p[pi] == '?' || p[pi] == t[ti]) {
+            pi += 1;
+            ti += 1;
+        } else if pi < p.len() && p[pi] == '*' {
+            backtrack = Some((pi, ti));
+            pi += 1;
+        } else if let Some((star, matched)) = backtrack {
+            pi = star + 1;
+            ti = matched + 1;
+            backtrack = Some((star, matched + 1));
+        } else {
+            return false;
+        }
+    }
+    p[pi..].iter().all(|&c| c == '*')
+}
+
 /// Expands a leading `~` to the home directory.
 pub fn expand_tilde(path: &str) -> PathBuf {
     match (path.strip_prefix('~'), dirs::home_dir()) {
@@ -152,6 +186,16 @@ mod tests {
         let config = Config::parse("theme = \"Nord\"").unwrap();
         assert_eq!(config.theme.as_deref(), Some("Nord"));
         assert_eq!(config.scan_exclude, Config::default().scan_exclude);
+    }
+
+    #[test]
+    fn glob() {
+        assert!(glob_match("release/*", "release/2024/q1"));
+        assert!(glob_match("*-wip", "feat-wip"));
+        assert!(glob_match("v?.?", "v1.2"));
+        assert!(glob_match("*", ""));
+        assert!(!glob_match("main", "mainline"));
+        assert!(!glob_match("a*b", "acd"));
     }
 
     #[test]

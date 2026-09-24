@@ -1,5 +1,6 @@
 use clap::Parser;
 
+mod cleanup;
 mod config;
 mod engine;
 mod git;
