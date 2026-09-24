@@ -13,7 +13,6 @@ pub trait GitExecutor {
         path: &Path,
         args: &[&str],
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<String>> + Send + '_>>;
-    fn open_repo(&self, path: &Path) -> Result<(), crate::git::models::GitError>;
     /// Runs a git command feeding `input` on its stdin.
     fn run_git_command_with_input(
         &self,
@@ -106,11 +105,6 @@ impl GitExecutor for RealSystem {
                 ))
             }
         })
-    }
-
-    fn open_repo(&self, path: &Path) -> Result<(), crate::git::models::GitError> {
-        gix::open(path)?;
-        Ok(())
     }
 
     fn run_git_command_with_input(
@@ -239,10 +233,6 @@ pub mod mock {
         {
             let res = self.run_git_command(path, args);
             Box::pin(async move { res })
-        }
-
-        fn open_repo(&self, _path: &Path) -> Result<(), crate::git::models::GitError> {
-            Ok(())
         }
 
         fn run_git_command_with_input(

@@ -3,14 +3,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GitError {
-    #[error("Failed to open repository: {0}")]
-    OpenError(Box<gix::open::Error>),
-}
-
-impl From<gix::open::Error> for GitError {
-    fn from(e: gix::open::Error) -> Self {
-        GitError::OpenError(Box::new(e))
-    }
+    #[error("not a readable Git repository: {0}")]
+    NotARepository(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

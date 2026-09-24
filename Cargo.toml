@@ -9,7 +9,6 @@ anyhow = "1.0.102"
 clap = { version = "4.5.60", features = ["derive"] }
 crossterm = "0.29.0"
 dirs = "7.0.0"
-gix = "0.80.0"
 ignore = "0.4.25"
 ratatui = "0.30.0"
 rayon = "1.11.0"

@@ -11,7 +11,8 @@ const STASH_FORMAT: &str = "--format=%gd%x00%H%x00%ct%x00%gs";
 const DEFAULT_BRANCH_CANDIDATES: [&str; 4] = ["main", "master", "trunk", "develop"];
 
 pub fn analyze_repository(path: &Path, sys: &impl GitExecutor) -> Result<RepoStatus, GitError> {
-    sys.open_repo(path)?;
+    // The first git call doubles as the check that this is a usable repository.
+    let mut branches = list_branches(path, sys)?;
 
     let remote_url = sys
         .run_git_command(path, &["config", "--get", "remote.origin.url"])
@@ -19,7 +20,6 @@ pub fn analyze_repository(path: &Path, sys: &impl GitExecutor) -> Result<RepoSta
         .map(|url| simplify_remote_url(url.trim()))
         .filter(|url| !url.is_empty());
 
-    let mut branches = list_branches(path, sys);
     let default_branch = detect_default_branch(path, &branches, sys);
     if let Some(default) = &default_branch {
         compute_divergence(path, default, &mut branches, sys);
@@ -65,11 +65,11 @@ pub fn analyze_repository(path: &Path, sys: &impl GitExecutor) -> Result<RepoSta
     })
 }
 
-fn list_branches(path: &Path, sys: &impl GitExecutor) -> Vec<BranchInfo> {
+fn list_branches(path: &Path, sys: &impl GitExecutor) -> Result<Vec<BranchInfo>, GitError> {
     let format = format!("--format={REF_FORMAT}");
     sys.run_git_command(path, &["for-each-ref", &format, "refs/heads"])
         .map(|out| out.lines().filter_map(parse_branch_line).collect())
-        .unwrap_or_default()
+        .map_err(|e| GitError::NotARepository(e.to_string().trim().to_string()))
 }
 
 /// Parses one line produced by [`REF_FORMAT`] (fields separated by NUL).
