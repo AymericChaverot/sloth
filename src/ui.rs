@@ -13,6 +13,7 @@ use std::sync::mpsc::{Receiver, Sender};
 
 pub mod components;
 pub mod events;
+pub mod selection;
 pub mod state;
 pub mod theme;
 
@@ -320,38 +321,27 @@ pub fn run_tui(
 fn build_plans(state: &AppState, action: UiAction) -> Vec<crate::engine::RepoPlan> {
     use crate::engine::{Operation, RepoPlan};
 
+    if matches!(action, UiAction::CleanRepo) {
+        return state.selection.plans(&state.repositories, &state.config);
+    }
+
     let focused = state.repositories.get(state.repo_index);
-    let targets: Vec<&crate::git::RepoStatus> =
-        if matches!(action, UiAction::CleanRepo) || state.selected_repositories.is_empty() {
-            focused.into_iter().collect()
-        } else {
-            let mut indices: Vec<usize> = state.selected_repositories.iter().copied().collect();
-            indices.sort_unstable();
-            indices
-                .into_iter()
-                .filter_map(|i| state.repositories.get(i))
-                .collect()
-        };
+    let targets: Vec<&crate::git::RepoStatus> = if state.selected_repositories.is_empty() {
+        focused.into_iter().collect()
+    } else {
+        let mut indices: Vec<usize> = state.selected_repositories.iter().copied().collect();
+        indices.sort_unstable();
+        indices
+            .into_iter()
+            .filter_map(|i| state.repositories.get(i))
+            .collect()
+    };
 
     targets
         .into_iter()
         .map(|repo| {
             let operations = match action {
-                UiAction::CleanRepo => {
-                    let branches = state.selected_branches.get(&state.repo_index);
-                    let stashes = state.selected_stashes.get(&state.repo_index);
-                    let worktrees = state.selected_worktrees.get(&state.repo_index);
-                    crate::cleanup::cleanup_operations(
-                        repo,
-                        branches.into_iter().flatten().map(String::as_str),
-                        repo.stashes
-                            .iter()
-                            .filter(|s| stashes.is_some_and(|set| set.contains(&s.index)))
-                            .map(|s| s.sha.as_str()),
-                        worktrees.into_iter().flatten().map(String::as_str),
-                        &state.config,
-                    )
-                }
+                UiAction::CleanRepo => unreachable!("handled above"),
                 UiAction::PruneRemotes => vec![Operation::PruneRemotes],
                 UiAction::GarbageCollect => vec![Operation::GarbageCollect],
                 UiAction::DeepClean => vec![Operation::DeepClean {

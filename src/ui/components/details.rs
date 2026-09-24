@@ -24,7 +24,12 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         detail_items
             .push(ListItem::new("--- Branches ---").style(Style::default().fg(theme.secondary)));
 
-        let selected_b = state.selected_branches.entry(state.repo_index).or_default();
+        let repo_sel = state
+            .selection
+            .repo(&repo.path)
+            .cloned()
+            .unwrap_or_default();
+        let selected_b = &repo_sel.branches;
         for (b_idx, branch) in repo.branches.iter().enumerate() {
             if state.is_searching
                 && !state.search_query.is_empty()
@@ -188,7 +193,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
         detail_items
             .push(ListItem::new("--- Stashes ---").style(Style::default().fg(theme.secondary)));
-        let selected_s = state.selected_stashes.entry(state.repo_index).or_default();
+        let selected_s = &repo_sel.stashes;
         for (s_idx, stash) in repo.stashes.iter().enumerate() {
             if state.is_searching
                 && !state.search_query.is_empty()
@@ -206,7 +211,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             } else {
                 "   "
             };
-            let checkbox = if selected_s.contains(&stash.index) {
+            let checkbox = if selected_s.contains(&stash.sha) {
                 "[x] "
             } else {
                 "[ ] "
@@ -246,10 +251,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
         detail_items
             .push(ListItem::new("--- Worktrees ---").style(Style::default().fg(theme.secondary)));
-        let selected_wt = state
-            .selected_worktrees
-            .entry(state.repo_index)
-            .or_default();
+        let selected_wt = &repo_sel.worktrees;
         for (wt_idx, wt) in repo.worktrees.iter().enumerate() {
             if state.is_searching
                 && !state.search_query.is_empty()
@@ -326,26 +328,17 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         let mut sel_b = 0usize;
         let mut sel_s = 0usize;
         let mut sel_w = 0usize;
-        if let Some(repo) = state.repositories.get(state.repo_index) {
-            let selected_wt = state
-                .selected_worktrees
-                .get(&state.repo_index)
-                .cloned()
-                .unwrap_or_default();
+        if let Some(repo) = state.repositories.get(state.repo_index)
+            && let Some(sel) = state.selection.repo(&repo.path)
+        {
             for wt in &repo.worktrees {
-                if selected_wt.contains(&wt.path) {
+                if sel.worktrees.contains(&wt.path) {
                     recoverable += wt.size_bytes.unwrap_or(0);
                 }
             }
-            sel_b = state
-                .selected_branches
-                .get(&state.repo_index)
-                .map_or(0, |s| s.len());
-            sel_s = state
-                .selected_stashes
-                .get(&state.repo_index)
-                .map_or(0, |s| s.len());
-            sel_w = selected_wt.len();
+            sel_b = sel.branches.len();
+            sel_s = sel.stashes.len();
+            sel_w = sel.worktrees.len();
         }
         let has_selection = sel_b + sel_s + sel_w > 0;
         let mut label = "Details (Branches, Stashes, Worktrees)".to_string();

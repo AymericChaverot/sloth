@@ -23,6 +23,14 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             "Dashboard: 'q' quit. Left/Right/'d' to exit.".to_string()
         }
     };
+    if !state.selection.is_empty() {
+        help_text = format!(
+            "Queue: {} item(s) in {} repo(s) — Enter review & run, 'C' clear  |  {}",
+            state.selection.len(),
+            state.selection.repo_count(),
+            help_text
+        );
+    }
     if let Some(ref ver) = state.update_available {
         help_text = format!(
             "🔄 Update available: {} — press 'u' to update  |  {}",

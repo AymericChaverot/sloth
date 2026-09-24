@@ -72,9 +72,9 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
             }
             KeyCode::Esc => {
                 if state.focus == Focus::Details {
-                    state.selected_branches.remove(&state.repo_index);
-                    state.selected_stashes.remove(&state.repo_index);
-                    state.selected_worktrees.remove(&state.repo_index);
+                    if let Some(repo) = state.repositories.get(state.repo_index) {
+                        state.selection.clear_repo(&repo.path);
+                    }
                 } else if state.focus == Focus::Dashboard {
                     state.focus = Focus::Repositories;
                 } else if state.focus == Focus::GitGraph {
@@ -125,78 +125,48 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                     } else {
                         state.selected_repositories.insert(state.repo_index);
                     }
-                } else if state.focus == Focus::Details && !state.repositories.is_empty() {
-                    let repo = &state.repositories[state.repo_index];
-                    let b_len = repo.branches.len();
-                    if state.detail_index < b_len {
-                        // It's a branch
-                        let branch = &repo.branches[state.detail_index];
-                        let protected =
-                            crate::cleanup::branch_protection(repo, branch, &state.config)
-                                .is_some();
-                        let b_name = branch.name.clone();
-                        let set = state.selected_branches.entry(state.repo_index).or_default();
-                        if protected || set.contains(&b_name) {
-                            set.remove(&b_name);
-                        } else {
-                            set.insert(b_name);
-                        }
-                    } else {
-                        let s_idx = state.detail_index.saturating_sub(b_len);
-                        if s_idx < repo.stashes.len() {
-                            // It's a stash
-                            let s_id = repo.stashes[s_idx].index;
-                            let set = state.selected_stashes.entry(state.repo_index).or_default();
-                            if set.contains(&s_id) {
-                                set.remove(&s_id);
-                            } else {
-                                set.insert(s_id);
-                            }
-                        } else {
-                            // It's a worktree
-                            let w_idx = s_idx.saturating_sub(repo.stashes.len());
-                            if w_idx < repo.worktrees.len()
-                                && crate::cleanup::worktree_protection(&repo.worktrees[w_idx])
-                                    .is_none()
-                            {
-                                let w_path = repo.worktrees[w_idx].path.clone();
-                                let set = state
-                                    .selected_worktrees
-                                    .entry(state.repo_index)
-                                    .or_default();
-                                if set.contains(&w_path) {
-                                    set.remove(&w_path);
-                                } else {
-                                    set.insert(w_path);
-                                }
-                            }
-                        }
-                    }
+                } else if state.focus == Focus::Details
+                    && let Some(repo) = state.repositories.get(state.repo_index)
+                    && let Some((kind, id)) = detail_item(repo, state.detail_index, &state.config)
+                {
+                    let path = repo.path.clone();
+                    state.selection.toggle(&path, kind, &id);
                 }
             }
             KeyCode::Char('a')
                 if state.focus == Focus::Details && !state.repositories.is_empty() =>
             {
-                let repo = &state.repositories[state.repo_index];
-                let set = state.selected_branches.entry(state.repo_index).or_default();
-                for branch in &repo.branches {
-                    if crate::cleanup::is_smart_candidate(repo, branch, &state.config) {
-                        set.insert(branch.name.clone());
-                    }
-                }
+                smart_select(state, &[state.repo_index]);
+            }
+            KeyCode::Char('a')
+                if state.focus == Focus::Repositories && !state.repositories.is_empty() =>
+            {
+                // Smart select across every marked repository (or the focused one).
+                let targets: Vec<usize> = if state.selected_repositories.is_empty() {
+                    vec![state.repo_index]
+                } else {
+                    state.selected_repositories.iter().copied().collect()
+                };
+                smart_select(state, &targets);
             }
             KeyCode::Char('A')
                 if state.focus == Focus::Details && !state.repositories.is_empty() =>
             {
                 let repo = &state.repositories[state.repo_index];
-                let set = state.selected_branches.entry(state.repo_index).or_default();
                 for branch in &repo.branches {
                     if crate::cleanup::branch_protection(repo, branch, &state.config).is_none() {
-                        set.insert(branch.name.clone());
+                        state.selection.insert(
+                            &repo.path,
+                            crate::ui::selection::ItemKind::Branch,
+                            &branch.name,
+                        );
                     }
                 }
             }
-            KeyCode::Enter if state.focus == Focus::Details => {
+            KeyCode::Enter
+                if matches!(state.focus, Focus::Details | Focus::Repositories)
+                    && !state.selection.is_empty() =>
+            {
                 state.pending_action = Some(UiAction::CleanRepo);
             }
             KeyCode::Char('p')
@@ -209,6 +179,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
             {
                 state.pending_action = Some(UiAction::GarbageCollect);
             }
+            KeyCode::Char('C') => state.selection.clear(),
             KeyCode::Char('t') => {
                 state.theme_index = (state.theme_index + 1) % crate::ui::theme::THEMES.len();
                 let name = crate::ui::theme::get_theme(state.theme_index).name;
@@ -289,4 +260,46 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// The selectable item at `index` in the details list (branches, then stashes,
+/// then worktrees), or `None` for protected items.
+fn detail_item(
+    repo: &crate::git::RepoStatus,
+    index: usize,
+    config: &crate::config::Config,
+) -> Option<(crate::ui::selection::ItemKind, String)> {
+    use crate::ui::selection::ItemKind;
+
+    if let Some(branch) = repo.branches.get(index) {
+        return crate::cleanup::branch_protection(repo, branch, config)
+            .is_none()
+            .then(|| (ItemKind::Branch, branch.name.clone()));
+    }
+    let index = index - repo.branches.len();
+    if let Some(stash) = repo.stashes.get(index) {
+        return Some((ItemKind::Stash, stash.sha.clone()));
+    }
+    let worktree = repo.worktrees.get(index - repo.stashes.len())?;
+    crate::cleanup::worktree_protection(worktree)
+        .is_none()
+        .then(|| (ItemKind::Worktree, worktree.path.clone()))
+}
+
+/// Selects merged and gone branches in the given repositories.
+fn smart_select(state: &mut AppState, repo_indices: &[usize]) {
+    for &i in repo_indices {
+        let Some(repo) = state.repositories.get(i) else {
+            continue;
+        };
+        for branch in &repo.branches {
+            if crate::cleanup::is_smart_candidate(repo, branch, &state.config) {
+                state.selection.insert(
+                    &repo.path,
+                    crate::ui::selection::ItemKind::Branch,
+                    &branch.name,
+                );
+            }
+        }
+    }
 }

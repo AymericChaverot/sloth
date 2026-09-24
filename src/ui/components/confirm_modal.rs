@@ -17,21 +17,13 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
 
     let action_desc = match pending {
         UiAction::CleanRepo => {
-            let b = state
-                .selected_branches
-                .get(&state.repo_index)
-                .map_or(0, |s| s.len());
-            let s = state
-                .selected_stashes
-                .get(&state.repo_index)
-                .map_or(0, |s| s.len());
-            let w = state
-                .selected_worktrees
-                .get(&state.repo_index)
-                .map_or(0, |s| s.len());
+            let (b, s, w) = state.selection.counts();
             format!(
-                "Delete {} branch(es), {} stash(es), {} worktree(s)",
-                b, s, w
+                "Delete {} branch(es), {} stash(es), {} worktree(s) in {} repo(s)",
+                b,
+                s,
+                w,
+                state.selection.repo_count()
             )
         }
         UiAction::PruneRemotes => {
@@ -75,70 +67,29 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     ]));
     lines.push(Line::raw(""));
 
-    if let UiAction::CleanRepo = pending
-        && let Some(repo) = state.repositories.get(state.repo_index)
-    {
-        if let Some(branches) = state.selected_branches.get(&state.repo_index)
-            && !branches.is_empty()
-        {
+    if let UiAction::CleanRepo = pending {
+        for plan in state.selection.plans(&state.repositories, &state.config) {
+            let Some(repo) = state.repositories.iter().find(|r| r.path == plan.repo) else {
+                continue;
+            };
             lines.push(Line::from(Span::styled(
-                "Branches:",
-                Style::default().fg(theme.secondary),
+                repo.path.display().to_string(),
+                Style::default()
+                    .fg(theme.secondary)
+                    .add_modifier(Modifier::BOLD),
             )));
-            let mut sorted: Vec<&String> = branches.iter().collect();
-            sorted.sort();
-            for b in sorted {
+            for op in &plan.operations {
                 let mut spans = vec![Span::styled(
-                    format!("  - {}", b),
+                    format!("  - {}", op.describe()),
                     Style::default().fg(theme.error),
                 )];
-                if repo
-                    .branches
-                    .iter()
-                    .any(|info| &info.name == b && info.has_unique_commits())
-                {
+                if let Some(warning) = operation_warning(repo, op) {
                     spans.push(Span::styled(
-                        "  ⚠ has commits not merged nor pushed",
+                        format!("  ⚠ {warning}"),
                         Style::default().fg(theme.primary),
                     ));
                 }
                 lines.push(Line::from(spans));
-            }
-            lines.push(Line::raw(""));
-        }
-        if let Some(stashes) = state.selected_stashes.get(&state.repo_index)
-            && !stashes.is_empty()
-        {
-            lines.push(Line::from(Span::styled(
-                "Stashes:",
-                Style::default().fg(theme.secondary),
-            )));
-            let mut sorted: Vec<usize> = stashes.iter().copied().collect();
-            sorted.sort();
-            for s in sorted {
-                if let Some(st) = repo.stashes.iter().find(|st| st.index == s) {
-                    lines.push(Line::from(Span::styled(
-                        format!("  - {}", st.message),
-                        Style::default().fg(theme.error),
-                    )));
-                }
-            }
-            lines.push(Line::raw(""));
-        }
-        if let Some(worktrees) = state.selected_worktrees.get(&state.repo_index)
-            && !worktrees.is_empty()
-        {
-            lines.push(Line::from(Span::styled(
-                "Worktrees:",
-                Style::default().fg(theme.secondary),
-            )));
-            let mut sorted: Vec<&String> = worktrees.iter().collect();
-            sorted.sort();
-            for w in sorted {
-                lines.push(Line::from(Span::styled(
-                    format!("  - {}", w),
-                    Style::default().fg(theme.error),
-                )));
             }
             lines.push(Line::raw(""));
         }
@@ -229,4 +180,22 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+/// What could be lost by running `op`, if anything.
+pub fn operation_warning(
+    repo: &crate::git::RepoStatus,
+    op: &crate::engine::Operation,
+) -> Option<&'static str> {
+    use crate::engine::Operation;
+    match op {
+        Operation::DeleteBranch { name, .. } => repo
+            .branches
+            .iter()
+            .find(|b| &b.name == name)
+            .filter(|b| b.has_unique_commits())
+            .map(|_| "has commits that are neither merged nor pushed"),
+        Operation::RemoveWorktree { force: true, .. } => Some("uncommitted changes will be lost"),
+        _ => None,
+    }
 }
