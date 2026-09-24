@@ -27,6 +27,15 @@ pub enum ScannerEvent {
     AnalysisComplete,
     UpdateAvailable(String),
     DeepCleanPreview(Vec<String>),
+    GraphLoaded {
+        path: PathBuf,
+        lines: Vec<String>,
+    },
+    /// `id` matches `AppState::diff_request_id` when still relevant.
+    DiffLoaded {
+        id: u64,
+        lines: Vec<String>,
+    },
 }
 
 #[derive(PartialEq, Debug)]
@@ -65,12 +74,17 @@ pub struct AppState {
     pub is_analyzing: bool,
     pub scanned_count: usize,
     pub analyzed_count: usize,
-    pub loader_tick: usize,
+    /// Drives spinner animations.
+    pub started: std::time::Instant,
+    /// Repositories whose graph is being loaded.
+    pub graph_loading: HashSet<PathBuf>,
     pub update_available: Option<String>,
     pub is_updating: bool,
     pub diff_modal_open: bool,
     pub diff_lines: Option<Vec<String>>,
     pub diff_scroll: u16,
+    pub diff_request_id: u64,
+    pub diff_requested: bool,
     pub theme_index: usize,
     pub is_searching: bool,
     pub search_query: String,
@@ -106,12 +120,15 @@ impl AppState {
             is_analyzing: true,
             scanned_count: 0,
             analyzed_count: 0,
-            loader_tick: 0,
+            started: std::time::Instant::now(),
+            graph_loading: HashSet::new(),
             update_available: None,
             is_updating: false,
             diff_modal_open: false,
             diff_lines: None,
             diff_scroll: 0,
+            diff_request_id: 0,
+            diff_requested: false,
             theme_index: crate::ui::theme::index_by_name(config.theme.as_deref()),
             config,
             is_searching: false,
@@ -120,6 +137,25 @@ impl AppState {
             confirm_preview_lines: None,
             preview_loading: false,
         }
+    }
+
+    /// Current spinner frame (time based, independent of the redraw rate).
+    pub fn spinner(&self) -> &'static str {
+        let frame = self.started.elapsed().as_millis() / 100;
+        crate::ui::SPINNER[frame as usize % crate::ui::SPINNER.len()]
+    }
+
+    /// Whether something on screen animates, so the UI must keep redrawing.
+    pub fn is_animating(&self) -> bool {
+        self.is_scanning
+            || self.is_analyzing
+            || self.preview_loading
+            || !self.graph_loading.is_empty()
+            || (self.diff_modal_open && self.diff_lines.is_none())
+            || self
+                .repositories
+                .iter()
+                .any(|r| r.analyzed && r.error.is_none() && !r.size_finalized)
     }
 }
 

@@ -391,8 +391,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         });
 
     if state.repositories.is_empty() {
-        let spinner = crate::ui::SPINNER;
-        let frame = spinner[(state.loader_tick / 4) % spinner.len()];
+        let frame = state.spinner();
         let text = if state.is_scanning {
             format!("{} Waiting for scan to complete...", frame)
         } else if state.is_analyzing {
@@ -407,8 +406,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         f.render_widget(p, area);
     } else if !is_repo_analyzed {
         // Repo found but not yet analyzed — show spinner
-        let spinner = crate::ui::SPINNER;
-        let frame = spinner[(state.loader_tick / 4) % spinner.len()];
+        let frame = state.spinner();
         let text = format!("{} Analyzing repository...", frame);
         let p = Paragraph::new(text)
             .style(Style::default().fg(theme.text_dimmed))

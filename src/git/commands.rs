@@ -1,51 +1,41 @@
-use super::models::GitError;
 use std::path::Path;
 
-pub fn get_git_graph(
-    path: &Path,
-    sys: &impl crate::sys::GitExecutor,
-) -> Result<Vec<String>, GitError> {
-    match sys.run_git_command(
+/// Commits shown in the graph: enough to see every recent branch, bounded so
+/// that huge histories stay fast.
+const GRAPH_MAX_COMMITS: &str = "2000";
+
+/// Colored `git log --graph` of all local and remote branches.
+pub fn get_git_graph(path: &Path, sys: &impl crate::sys::GitExecutor) -> Vec<String> {
+    lines_of(sys.run_git_command(
         path,
         &[
             "log",
             "--graph",
+            "--all",
             "--color=always",
+            "-n",
+            GRAPH_MAX_COMMITS,
             "--pretty=format:%C(yellow)%h%Creset -%C(auto)%d%Creset %s %C(dim white)(%ar) <%an>%Creset",
         ],
-    ) {
-        Ok(out) => Ok(out.lines().map(|s| s.to_string()).collect()),
-        _ => Ok(Vec::new()),
-    }
+    ))
 }
 
+/// Colored diff for a revision range such as `main...feature`.
 pub fn get_branch_diff(
     path: &Path,
-    diff_target: &str,
+    range: &str,
     sys: &impl crate::sys::GitExecutor,
-) -> Result<Vec<String>, GitError> {
-    match sys.run_git_command(path, &["diff", "--color=always", diff_target]) {
-        Ok(out) => Ok(out.lines().map(|s| s.to_string()).collect()),
-        _ => Ok(Vec::new()),
-    }
+) -> Vec<String> {
+    lines_of(sys.run_git_command(path, &["diff", "--color=always", range]))
 }
 
-pub fn get_stash_diff(
-    path: &Path,
-    stash_index: usize,
-    sys: &impl crate::sys::GitExecutor,
-) -> Result<Vec<String>, GitError> {
-    match sys.run_git_command(
-        path,
-        &[
-            "stash",
-            "show",
-            "-p",
-            "--color=always",
-            &format!("stash@{{{}}}", stash_index),
-        ],
-    ) {
-        Ok(out) => Ok(out.lines().map(|s| s.to_string()).collect()),
-        _ => Ok(Vec::new()),
-    }
+/// Colored patch of a stash, identified by its commit id.
+pub fn get_stash_diff(path: &Path, stash: &str, sys: &impl crate::sys::GitExecutor) -> Vec<String> {
+    lines_of(sys.run_git_command(path, &["stash", "show", "-p", "--color=always", stash]))
+}
+
+fn lines_of(output: std::io::Result<String>) -> Vec<String> {
+    output
+        .map(|out| out.lines().map(str::to_string).collect())
+        .unwrap_or_default()
 }

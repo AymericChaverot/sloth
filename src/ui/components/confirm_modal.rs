@@ -98,7 +98,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     if let UiAction::DeepClean = pending {
         match &state.confirm_preview_lines {
             None => {
-                let spinner = crate::ui::SPINNER[state.loader_tick % crate::ui::SPINNER.len()];
+                let spinner = state.spinner();
                 lines.push(Line::from(vec![
                     Span::styled(format!("{} ", spinner), Style::default().fg(theme.primary)),
                     Span::styled(

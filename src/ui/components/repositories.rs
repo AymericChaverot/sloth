@@ -52,8 +52,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         });
 
     if state.is_scanning && state.repositories.is_empty() {
-        let spinner = crate::ui::SPINNER;
-        let frame = spinner[(state.loader_tick / 4) % spinner.len()];
+        let frame = state.spinner();
         let p = Paragraph::new(format!("{} Scanning directory structure...", frame))
             .style(Style::default().fg(theme.text_dimmed))
             .block(repo_block)
@@ -109,8 +108,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                         Style::default().fg(theme.primary),
                     ));
                 }
-                let spinner = crate::ui::SPINNER;
-                let frame = spinner[(state.loader_tick / 4) % spinner.len()];
+                let frame = state.spinner();
                 let fmt = crate::git::stats::format_size;
                 match (repo.size_bytes, repo.size_finalized) {
                     (Some(size), true) => {

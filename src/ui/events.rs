@@ -2,10 +2,22 @@ use crate::ui::state::{AppState, Focus, UiAction};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use std::time::Duration;
 
-pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
-    if event::poll(Duration::from_millis(16))?
-        && let Event::Key(key) = event::read()?
-        && key.kind == KeyEventKind::Press
+/// Waits up to `timeout` for input. Returns whether the screen must be redrawn.
+pub fn handle_events(state: &mut AppState, timeout: Duration) -> std::io::Result<bool> {
+    if !event::poll(timeout)? {
+        return Ok(false);
+    }
+    match event::read()? {
+        Event::Key(key) if key.kind == KeyEventKind::Press => {
+            handle_key(state, key);
+            Ok(true)
+        }
+        Event::Resize(..) => Ok(true),
+        _ => Ok(false),
+    }
+}
+
+fn handle_key(state: &mut AppState, key: crossterm::event::KeyEvent) {
     {
         // Confirm modal takes priority over everything else
         if state.pending_action.is_some() {
@@ -21,7 +33,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                 }
                 _ => {}
             }
-            return Ok(());
+            return;
         }
 
         if state.diff_modal_open {
@@ -46,7 +58,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                 }
                 _ => {}
             }
-            return Ok(());
+            return;
         }
 
         if state.is_searching {
@@ -62,7 +74,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
                 }
                 _ => {}
             }
-            return Ok(());
+            return;
         }
 
         match key.code {
@@ -188,6 +200,7 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
             KeyCode::Char('v') if state.focus == Focus::Details => {
                 state.diff_modal_open = true;
                 state.diff_lines = None;
+                state.diff_requested = false;
                 state.diff_scroll = 0;
             }
             KeyCode::Char('X')
@@ -259,7 +272,6 @@ pub fn handle_events(state: &mut AppState) -> std::io::Result<()> {
             _ => {}
         }
     }
-    Ok(())
 }
 
 /// The selectable item at `index` in the details list (branches, then stashes,
