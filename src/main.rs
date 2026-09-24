@@ -31,6 +31,11 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Delete merged, gone or stale branches across repositories, without the TUI
+    ///
+    /// Without criteria, deletes merged and gone branches. Protected branches
+    /// (default, checked out, `protected_branches`) are never deleted.
+    Clean(cli::CleanArgs),
     /// Restore branches and stashes deleted by sloth (lists them without arguments)
     Restore {
         /// Journal entry ids to restore
@@ -49,13 +54,16 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let (config, config_warning) = config::Config::load();
-    if let Some(warning) = config_warning {
-        eprintln!("⚠ {warning} — using defaults.");
-    }
-
     let root = config.scan_root(args.path.as_deref());
     if !root.is_dir() {
         anyhow::bail!("{} is not a directory", root.display());
+    }
+
+    if let Some(Command::Clean(clean_args)) = args.command {
+        if let Some(warning) = config_warning {
+            eprintln!("⚠ {warning} — using defaults.");
+        }
+        return cli::clean(root, config, clean_args).await;
     }
 
     let (tx, rx) = std::sync::mpsc::channel();
@@ -70,7 +78,10 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let state = AppState::new(config, root);
+    let mut state = AppState::new(config, root);
+    if let Some(warning) = config_warning {
+        state.warn(format!("{warning} — using defaults"));
+    }
     ui::run_tui(state, rx, tx, worker)?;
     Ok(())
 }

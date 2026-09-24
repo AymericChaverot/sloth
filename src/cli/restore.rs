@@ -1,4 +1,4 @@
-//! Command-line subcommands that run without the TUI.
+//! `sloth restore`: bring back branches and stashes deleted by sloth.
 
 use crate::journal::{self, EntryKind, Journal};
 
