@@ -13,6 +13,13 @@ pub trait GitExecutor {
         args: &[&str],
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<String>> + Send + '_>>;
     fn open_repo(&self, path: &Path) -> Result<(), crate::git::models::GitError>;
+    /// Runs a git command feeding `input` on its stdin.
+    fn run_git_command_with_input(
+        &self,
+        path: &Path,
+        args: &[&str],
+        input: &str,
+    ) -> std::io::Result<String>;
 }
 
 #[derive(Clone)]
@@ -88,6 +95,39 @@ impl GitExecutor for RealSystem {
         gix::open(path)?;
         Ok(())
     }
+
+    fn run_git_command_with_input(
+        &self,
+        path: &Path,
+        args: &[&str],
+        input: &str,
+    ) -> std::io::Result<String> {
+        use std::io::Write;
+        use std::process::Stdio;
+
+        let mut child = std::process::Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        // Feed stdin from another thread so a full stdout pipe cannot deadlock.
+        let mut stdin = child.stdin.take().expect("stdin is piped");
+        let input = input.to_owned();
+        let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
+        let output = child.wait_with_output()?;
+        let _ = writer.join();
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            Err(std::io::Error::other(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -124,7 +164,22 @@ pub mod mock {
             self.command_outputs
                 .insert((path.to_path_buf(), args_vec), output);
         }
+
+        /// Registers an output for a command that receives `input` on stdin.
+        pub fn add_command_output_with_input(
+            &mut self,
+            path: &Path,
+            args: &[&str],
+            input: &str,
+            output: Result<String, String>,
+        ) {
+            let mut key: Vec<&str> = args.to_vec();
+            key.extend([STDIN_MARKER, input]);
+            self.add_command_output(path, &key, output);
+        }
     }
+
+    const STDIN_MARKER: &str = "<stdin>";
 
     impl FileSystem for MockSystem {
         fn exists(&self, path: &Path) -> bool {
@@ -173,6 +228,25 @@ pub mod mock {
 
         fn open_repo(&self, _path: &Path) -> Result<(), crate::git::models::GitError> {
             Ok(())
+        }
+
+        fn run_git_command_with_input(
+            &self,
+            path: &Path,
+            args: &[&str],
+            input: &str,
+        ) -> std::io::Result<String> {
+            let mut key: Vec<&str> = args.to_vec();
+            key.extend([STDIN_MARKER, input]);
+            let key_vec: Vec<String> = key.iter().map(|s| s.to_string()).collect();
+            if self
+                .command_outputs
+                .contains_key(&(path.to_path_buf(), key_vec))
+            {
+                self.run_git_command(path, &key)
+            } else {
+                self.run_git_command(path, args)
+            }
         }
     }
 }

@@ -7,6 +7,9 @@ mod sys;
 mod ui;
 mod updater;
 
+#[cfg(test)]
+mod test_support;
+
 use crate::ui::AppState;
 
 #[derive(Parser, Debug)]

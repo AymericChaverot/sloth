@@ -89,8 +89,13 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 ));
             }
 
-            if branch.is_fully_merged() {
+            if branch.is_merged {
                 spans.push(Span::styled(" (Merged)", Style::default().fg(theme.merged)));
+            } else if branch.is_squash_merged {
+                spans.push(Span::styled(
+                    " (Squash-merged)",
+                    Style::default().fg(theme.merged),
+                ));
             }
 
             let display_stats = if branch.is_dead || branch.upstream.is_some() {

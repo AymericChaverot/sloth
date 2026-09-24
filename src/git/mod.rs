@@ -1,6 +1,7 @@
 pub mod analyze;
 pub mod commands;
 pub mod models;
+pub(crate) mod squash;
 pub(crate) mod stats;
 
 pub use analyze::analyze_repository;

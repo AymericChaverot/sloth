@@ -23,6 +23,7 @@ pub fn analyze_repository(path: &Path, sys: &impl GitExecutor) -> Result<RepoSta
     let default_branch = detect_default_branch(path, &branches, sys);
     if let Some(default) = &default_branch {
         compute_divergence(path, default, &mut branches, sys);
+        super::squash::detect_hidden_merges(path, default, &mut branches, sys);
     }
     let current_branch = branches
         .iter()
