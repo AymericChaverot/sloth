@@ -23,7 +23,7 @@ cargo test
 
 ### 1. Branch Strategy
 
-- Create a feature branch from `master`:
+- Create a feature branch from `main`:
   ```bash
   git checkout -b feat/my-feature
   ```
@@ -48,18 +48,21 @@ cargo test -- --nocapture
 cargo test test_analyze_repository
 ```
 
+
 - **Unit tests** go in the same file as the code under `#[cfg(test)] mod tests`.
 - Use `MockSystem` from `sys::mock` for hermetic testing — no disk or Git access needed.
-- Every new parsing function, command wrapper, or engine action should have test coverage.
+- When real Git behavior matters, use `test_support::TempRepo` to build a throwaway repository.
+- UI changes are covered by snapshot tests in `src/ui/tests.rs`: after an intended change, run `cargo insta review` (or `INSTA_UPDATE=always cargo test`) and review the `.snap` diffs.
+- Every new parsing function, command wrapper, engine operation or key binding should have test coverage.
 
 ### 4. System Abstraction
 
 All Git and filesystem operations must go through the trait interfaces defined in `sys.rs`:
 
-- **`GitExecutor`** for any `git` CLI call (use `run_git_command` for sync, `run_git_command_async` for async)
-- **`FileSystem`** for any `std::fs` operation (`exists`, `get_size`)
+- **`GitExecutor`** for any `git` CLI call (`run_git_command`, `run_git_command_async`, `run_git_command_with_input`)
+- **`FileSystem`** for disk usage (`get_size`)
 
-Never call `std::process::Command::new("git")` or `std::fs::metadata()` directly. Always accept the trait as a parameter (`&impl GitExecutor` or `&impl FileSystem`).
+Never call `std::process::Command::new("git")` directly. Always accept the trait as a parameter (`&impl GitExecutor` or `&impl FileSystem`).
 
 ### 5. Commit Messages
 
@@ -75,49 +78,24 @@ test: add parse_shortstat edge cases
 
 ### 6. Pull Requests
 
-1. Ensure `cargo fmt`, `cargo clippy`, and `cargo test` all pass.
+1. Ensure `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, and `cargo test` all pass.
 2. Write a clear PR description explaining **what** changed and **why**.
 3. Reference any related issues.
 4. Keep PRs focused — one feature or fix per PR.
 
 ## Project Structure
 
-```
-src/
-├── main.rs          # CLI args + async orchestration
-├── scanner.rs       # Filesystem walker
-├── engine.rs        # Execution engine (clean, prune, gc, deep clean)
-├── sys.rs           # System traits (GitExecutor, FileSystem) + MockSystem
-├── updater.rs       # Self-update checker
-├── git/             # Git domain logic
-│   ├── models.rs    # Data structures (RepoStatus, BranchInfo, StashInfo, WorktreeInfo)
-│   ├── commands.rs  # Git command wrappers + unit tests
-│   └── stats.rs     # Branch stats + size utilities + unit tests
-├── ui.rs            # TUI runner
-└── ui/              # UI modules
-    ├── state.rs     # AppState + enums (Focus, ScannerEvent, UiAction)
-    ├── events.rs    # Keyboard handler
-    ├── theme.rs     # Theme engine with persistence
-    └── components/  # Render functions
-        ├── header.rs        # App title bar
-        ├── repositories.rs  # Repo list pane
-        ├── details.rs       # Branch/stash/worktree details pane
-        ├── graph.rs         # Git commit graph pane
-        ├── dashboard.rs     # Aggregated stats overlay
-        ├── diff_modal.rs    # Branch/stash diff viewer
-        ├── confirm_modal.rs # Pre-execution confirmation prompt with action preview
-        └── help.rs          # Context-sensitive help bar
-```
+See the [Architecture section of the README](README.md#architecture) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ### Adding a New Feature
 
-1. **Data model** → Add or modify structs in `git/models.rs`
-2. **Git logic** → Add commands in `git/commands.rs` using `&impl GitExecutor` / `&impl FileSystem`, with tests using `MockSystem`
-3. **State** → Update `AppState` in `ui/state.rs` if new UI state is needed
-4. **Events** → Handle new keys in `ui/events.rs`
-5. **Rendering** → Create or update components in `ui/components/`
-6. **Engine** → If a new action is needed, add it to `Action` enum and `execute_action` in `engine.rs`
-7. **Wire up** → Connect everything in `ui.rs` and/or `main.rs`
+1. **Data model** → structs in `git/models.rs`
+2. **Git logic** → `git/analyze.rs` or `git/commands.rs`, taking `&impl GitExecutor`, tested with `MockSystem`
+3. **Cleanup rules** → protection, plans and warnings in `cleanup.rs`
+4. **Engine** → new operations in `engine::Operation` and `engine::run`
+5. **State & views** → `ui/state.rs` for state, `ui/views.rs` for what a table lists
+6. **Input** → `ui/events.rs`, and document the key in `ui/keymap.rs` (status bar + `?` overlay) and the README
+7. **Rendering** → components in `ui/components/`, with a snapshot test
 
 ## CI Pipeline
 
@@ -125,13 +103,13 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push and 
 
 | Step | Command |
 |---|---|
-| Format check | `cargo fmt -- --check` |
-| Lint | `cargo clippy -- -D warnings` |
-| Test | `cargo test` |
+| Format check | `cargo fmt --all -- --check` |
+| Lint | `cargo clippy --all-targets -- -D warnings` |
+| Test (Linux, macOS, Windows) | `cargo test -- --test-threads=1` |
+| Coverage | `cargo llvm-cov` |
 | Build | `cargo build --release` |
 
 All checks must pass before merging.
-
 ## Reporting Issues
 
 When opening an issue, please include:
