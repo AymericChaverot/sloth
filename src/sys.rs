@@ -22,6 +22,18 @@ pub trait GitExecutor {
     ) -> std::io::Result<String>;
 }
 
+/// A `git` process with a stable, non-interactive environment: output is
+/// parsed, so it must not be translated, and nothing may prompt for input.
+fn git_command() -> std::process::Command {
+    let mut cmd = std::process::Command::new("git");
+    cmd.env("LC_ALL", "C")
+        .env("LANGUAGE", "C")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_PAGER", "cat")
+        .stdin(std::process::Stdio::null());
+    cmd
+}
+
 #[derive(Clone)]
 pub struct RealSystem;
 
@@ -51,10 +63,7 @@ impl FileSystem for RealSystem {
 
 impl GitExecutor for RealSystem {
     fn run_git_command(&self, path: &Path, args: &[&str]) -> std::io::Result<String> {
-        let output = std::process::Command::new("git")
-            .args(args)
-            .current_dir(path)
-            .output()?;
+        let output = git_command().args(args).current_dir(path).output()?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -75,7 +84,7 @@ impl GitExecutor for RealSystem {
         let args: Vec<String> = args.iter().map(|&s| s.to_string()).collect();
 
         Box::pin(async move {
-            let output = tokio::process::Command::new("git")
+            let output = tokio::process::Command::from(git_command())
                 .args(&args)
                 .current_dir(&path)
                 .output()
@@ -105,7 +114,7 @@ impl GitExecutor for RealSystem {
         use std::io::Write;
         use std::process::Stdio;
 
-        let mut child = std::process::Command::new("git")
+        let mut child = git_command()
             .args(args)
             .current_dir(path)
             .stdin(Stdio::piped())
