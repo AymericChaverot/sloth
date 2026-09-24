@@ -16,10 +16,10 @@ pub enum Protection {
 impl Protection {
     pub fn label(self) -> &'static str {
         match self {
-            Protection::DefaultBranch => "default branch",
+            Protection::DefaultBranch => "default",
             Protection::CheckedOut => "checked out",
             Protection::Configured => "protected",
-            Protection::MainWorktree => "main worktree",
+            Protection::MainWorktree => "main",
         }
     }
 }

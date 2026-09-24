@@ -1,6 +1,6 @@
 use crate::git::RepoStatus;
-use ratatui::widgets::ListState;
-use std::collections::{HashMap, HashSet};
+use ratatui::widgets::TableState;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -142,19 +142,55 @@ pub enum UiAction {
     DeepClean,
 }
 
+/// Sort order of the repository list, cycled with `s`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepoSort {
+    Path,
+    Cleanable,
+    Reclaimable,
+    GitSize,
+}
+
+impl RepoSort {
+    pub fn label(self) -> &'static str {
+        match self {
+            RepoSort::Path => "path",
+            RepoSort::Cleanable => "cleanable branches",
+            RepoSort::Reclaimable => "reclaimable space",
+            RepoSort::GitSize => ".git size",
+        }
+    }
+
+    pub fn next(self) -> RepoSort {
+        match self {
+            RepoSort::Path => RepoSort::Cleanable,
+            RepoSort::Cleanable => RepoSort::Reclaimable,
+            RepoSort::Reclaimable => RepoSort::GitSize,
+            RepoSort::GitSize => RepoSort::Path,
+        }
+    }
+}
+
 pub struct AppState {
     pub repositories: Vec<RepoStatus>,
     pub tab: Tab,
     pub show_help: bool,
     pub toast: Option<Toast>,
     pub focus: Focus,
-    pub repo_index: usize,
+    /// Repository under the cursor, tracked by path so sorting, filtering
+    /// and refreshes never move the cursor to another repository.
+    pub focused_repo: Option<PathBuf>,
+    /// Repositories targeted by maintenance actions and bulk smart selection.
+    pub marked_repos: BTreeSet<PathBuf>,
+    pub repo_sort: RepoSort,
+    /// Case-insensitive filter on repository paths and remotes.
+    pub repo_filter: String,
+    pub editing_filter: bool,
+    pub repo_table: TableState,
     pub detail_index: usize,
-    pub repo_state: ListState,
-    pub detail_state: ListState,
+    pub detail_table: TableState,
     pub graph_scroll_y: u16,
     pub graph_scroll_x: u16,
-    pub selected_repositories: HashSet<usize>,
     /// Cleanup queue: items selected in any repository.
     pub selection: crate::ui::selection::Selection,
     pub show_graph: bool,
@@ -163,22 +199,19 @@ pub struct AppState {
     pub action: Option<UiAction>,
     pub is_scanning: bool,
     pub is_analyzing: bool,
-    pub scanned_count: usize,
-    pub analyzed_count: usize,
     /// Drives spinner animations.
     pub started: std::time::Instant,
     /// Repositories whose graph is being loaded.
     pub graph_loading: HashSet<PathBuf>,
     pub update_available: Option<String>,
     pub is_updating: bool,
-    pub diff_modal_open: bool,
+    /// What the open diff shows; `None` when the diff modal is closed.
+    pub diff_target: Option<(PathBuf, crate::ui::loader::DiffTarget)>,
     pub diff_lines: Option<Vec<String>>,
     pub diff_scroll: u16,
     pub diff_request_id: u64,
     pub diff_requested: bool,
     pub theme_index: usize,
-    pub is_searching: bool,
-    pub search_query: String,
     pub pending_action: Option<UiAction>,
     pub confirm_preview_lines: Option<Vec<String>>,
     pub preview_loading: bool,
@@ -191,24 +224,22 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: crate::config::Config, root: PathBuf) -> Self {
-        let mut repo_state = ListState::default();
-        repo_state.select(Some(0));
-        let mut detail_state = ListState::default();
-        detail_state.select(Some(0));
-
         Self {
             repositories: Vec::new(),
             tab: Tab::Repos,
             show_help: false,
             toast: None,
             focus: Focus::Repositories,
-            repo_index: 0,
+            focused_repo: None,
+            marked_repos: BTreeSet::new(),
+            repo_sort: RepoSort::Path,
+            repo_filter: String::new(),
+            editing_filter: false,
+            repo_table: TableState::default(),
             detail_index: 0,
-            repo_state,
-            detail_state,
+            detail_table: TableState::default(),
             graph_scroll_y: 0,
             graph_scroll_x: 0,
-            selected_repositories: HashSet::new(),
             selection: Default::default(),
             show_graph: false,
             graph_maximized: false,
@@ -216,13 +247,11 @@ impl AppState {
             action: None,
             is_scanning: true,
             is_analyzing: true,
-            scanned_count: 0,
-            analyzed_count: 0,
             started: std::time::Instant::now(),
             graph_loading: HashSet::new(),
             update_available: None,
             is_updating: false,
-            diff_modal_open: false,
+            diff_target: None,
             diff_lines: None,
             diff_scroll: 0,
             diff_request_id: 0,
@@ -231,12 +260,77 @@ impl AppState {
             config,
             root,
             execution: None,
-            is_searching: false,
-            search_query: String::new(),
             pending_action: None,
             confirm_preview_lines: None,
             preview_loading: false,
         }
+    }
+
+    /// The repository under the cursor (the first visible one by default).
+    pub fn focused(&self) -> Option<&RepoStatus> {
+        let visible = crate::ui::views::visible_repos(self);
+        let index = self
+            .focused_repo
+            .as_ref()
+            .and_then(|path| {
+                visible
+                    .iter()
+                    .copied()
+                    .find(|&i| &self.repositories[i].path == path)
+            })
+            .or_else(|| visible.first().copied())?;
+        self.repositories.get(index)
+    }
+
+    /// Moves the repository cursor by `delta` rows in the visible list.
+    pub fn move_repo_cursor(&mut self, delta: isize) {
+        let visible = crate::ui::views::visible_repos(self);
+        if visible.is_empty() {
+            return;
+        }
+        let current = self
+            .focused()
+            .and_then(|f| {
+                visible
+                    .iter()
+                    .position(|&i| self.repositories[i].path == f.path)
+            })
+            .unwrap_or(0);
+        let next = current.saturating_add_signed(delta).min(visible.len() - 1);
+        self.focus_repo(self.repositories[visible[next]].path.clone());
+    }
+
+    pub fn focus_repo(&mut self, path: PathBuf) {
+        if self.focused_repo.as_ref() != Some(&path) {
+            self.focused_repo = Some(path);
+            self.detail_index = 0;
+            self.graph_scroll_y = 0;
+            self.graph_scroll_x = 0;
+        }
+    }
+
+    /// Repositories a maintenance action applies to: the marked ones, or the focused one.
+    pub fn action_targets(&self) -> Vec<PathBuf> {
+        if self.marked_repos.is_empty() {
+            self.focused().map(|r| r.path.clone()).into_iter().collect()
+        } else {
+            self.repositories
+                .iter()
+                .filter(|r| self.marked_repos.contains(&r.path))
+                .map(|r| r.path.clone())
+                .collect()
+        }
+    }
+
+    pub fn repo(&self, path: &std::path::Path) -> Option<&RepoStatus> {
+        self.repositories.iter().find(|r| r.path == path)
+    }
+
+    pub fn open_diff(&mut self, repo: PathBuf, target: crate::ui::loader::DiffTarget) {
+        self.diff_target = Some((repo, target));
+        self.diff_lines = None;
+        self.diff_requested = false;
+        self.diff_scroll = 0;
     }
 
     pub fn totals(&self) -> Totals {
@@ -312,7 +406,7 @@ impl AppState {
             || self.preview_loading
             || self.execution.as_ref().is_some_and(|e| !e.finished)
             || !self.graph_loading.is_empty()
-            || (self.diff_modal_open && self.diff_lines.is_none())
+            || (self.diff_target.is_some() && self.diff_lines.is_none())
             || self
                 .repositories
                 .iter()
@@ -324,19 +418,48 @@ impl AppState {
 mod tests {
     use super::*;
 
+    fn state_with(paths: &[&str]) -> AppState {
+        let mut state = AppState::new(crate::config::Config::default(), PathBuf::from("/w"));
+        state.repositories = paths
+            .iter()
+            .map(|p| RepoStatus::pending(PathBuf::from(p)))
+            .collect();
+        state
+    }
+
     #[test]
-    fn test_app_state_initialization() {
-        let state = AppState::new(crate::config::Config::default(), PathBuf::from("."));
-        assert_eq!(state.focus, Focus::Repositories);
-        assert_eq!(state.repo_index, 0);
-        assert_eq!(state.detail_index, 0);
-        assert!(!state.show_graph);
-        assert!(!state.graph_maximized);
-        assert!(state.is_scanning);
-        assert!(state.is_analyzing);
-        assert_eq!(state.scanned_count, 0);
-        assert_eq!(state.analyzed_count, 0);
-        assert!(state.update_available.is_none());
-        assert!(!state.is_updating);
+    fn focuses_first_repository_by_default() {
+        let state = state_with(&["/w/b", "/w/a"]);
+        assert_eq!(state.focused().unwrap().path, PathBuf::from("/w/a"));
+    }
+
+    #[test]
+    fn cursor_follows_the_repository_not_the_index() {
+        let mut state = state_with(&["/w/b", "/w/c"]);
+        state.move_repo_cursor(1);
+        assert_eq!(state.focused().unwrap().path, PathBuf::from("/w/c"));
+        // A repository discovered later sorts before the focused one.
+        state
+            .repositories
+            .push(RepoStatus::pending(PathBuf::from("/w/a")));
+        assert_eq!(state.focused().unwrap().path, PathBuf::from("/w/c"));
+    }
+
+    #[test]
+    fn cursor_skips_filtered_out_repositories() {
+        let mut state = state_with(&["/w/api", "/w/docs", "/w/web-api"]);
+        state.repo_filter = "api".into();
+        state.move_repo_cursor(1);
+        assert_eq!(state.focused().unwrap().path, PathBuf::from("/w/web-api"));
+        state.move_repo_cursor(5);
+        assert_eq!(state.focused().unwrap().path, PathBuf::from("/w/web-api"));
+    }
+
+    #[test]
+    fn actions_target_marked_repositories_or_the_focused_one() {
+        let mut state = state_with(&["/w/a", "/w/b"]);
+        assert_eq!(state.action_targets(), vec![PathBuf::from("/w/a")]);
+        state.marked_repos.insert(PathBuf::from("/w/b"));
+        assert_eq!(state.action_targets(), vec![PathBuf::from("/w/b")]);
     }
 }

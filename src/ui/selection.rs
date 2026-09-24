@@ -83,10 +83,6 @@ impl Selection {
         self.repos.clear();
     }
 
-    pub fn len(&self) -> usize {
-        self.repos.values().map(RepoSelection::len).sum()
-    }
-
     pub fn is_empty(&self) -> bool {
         self.repos.is_empty()
     }
@@ -104,6 +100,26 @@ impl Selection {
                 w + sel.worktrees.len(),
             )
         })
+    }
+
+    /// Human summary such as "3 branches, 1 stash in 2 repos".
+    pub fn summary(&self) -> String {
+        let (b, s, w) = self.counts();
+        let parts: Vec<String> = [
+            (b, "branch", "branches"),
+            (s, "stash", "stashes"),
+            (w, "worktree", "worktrees"),
+        ]
+        .into_iter()
+        .filter(|(n, ..)| *n > 0)
+        .map(|(n, one, many)| format!("{n} {}", if n == 1 { one } else { many }))
+        .collect();
+        let repos = self.repo_count();
+        format!(
+            "{} in {repos} {}",
+            parts.join(", "),
+            if repos == 1 { "repo" } else { "repos" }
+        )
     }
 
     /// Drops the items of `repo` that no longer exist, e.g. after a refresh.
@@ -215,6 +231,9 @@ mod tests {
         sel.insert(Path::new("/b"), ItemKind::Branch, "y");
         assert_eq!(sel.counts(), (4, 0, 0));
         assert_eq!(sel.repo_count(), 2);
+        sel.insert(Path::new("/b"), ItemKind::Stash, "s1");
+        assert_eq!(sel.summary(), "4 branches, 1 stash in 2 repos");
+        sel.remove(Path::new("/b"), ItemKind::Stash, "s1");
 
         let plans = sel.plans(&repos, &Config::default());
         assert_eq!(plans.len(), 2);
@@ -234,7 +253,7 @@ mod tests {
         sel.insert(Path::new("/a"), ItemKind::Branch, "gone");
         sel.insert(Path::new("/a"), ItemKind::Branch, "kept");
         sel.retain_existing(&repo("/a", &["kept"]));
-        assert_eq!(sel.len(), 1);
+        assert_eq!(sel.counts(), (1, 0, 0));
         assert!(sel.contains(Path::new("/a"), ItemKind::Branch, "kept"));
     }
 

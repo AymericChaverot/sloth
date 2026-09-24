@@ -127,6 +127,46 @@ fn repos_tab_details_focused_with_selection() {
     insta::assert_snapshot!(render(&mut state, 120, 20));
 }
 
+fn press(state: &mut AppState, keys: &str) {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    for c in keys.chars() {
+        let code = match c {
+            '\n' => KeyCode::Enter,
+            '\x1b' => KeyCode::Esc,
+            '↓' => KeyCode::Down,
+            '→' => KeyCode::Right,
+            c => KeyCode::Char(c),
+        };
+        crate::ui::events::handle_key(state, KeyEvent::new(code, KeyModifiers::NONE));
+    }
+}
+
+#[test]
+fn filtered_navigation_acts_on_the_visible_repository() {
+    let mut state = fixture_state();
+    // Filter to "web", then mark and open it: the hidden "api" is untouched.
+    press(&mut state, "/we\n ");
+    assert_eq!(
+        state.marked_repos.iter().collect::<Vec<_>>(),
+        vec![&PathBuf::from("/work/web")]
+    );
+    press(&mut state, "→a");
+    assert!(state.selection.contains(
+        &PathBuf::from("/work/web"),
+        crate::ui::selection::ItemKind::Branch,
+        "chore/deps"
+    ));
+    assert!(state.selection.repo(&PathBuf::from("/work/api")).is_none());
+}
+
+#[test]
+fn protected_items_cannot_be_selected() {
+    let mut state = fixture_state();
+    press(&mut state, "→ "); // cursor on `main`, the default branch
+    assert!(state.selection.is_empty());
+    assert!(state.toast.is_some());
+}
+
 #[test]
 fn dashboard_tab() {
     let mut state = fixture_state();

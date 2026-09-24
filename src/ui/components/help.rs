@@ -24,26 +24,19 @@ pub fn render_status_bar(f: &mut Frame, state: &AppState, area: Rect) {
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         ))
     } else if !state.selection.is_empty() {
-        let (b, s, w) = state.selection.counts();
         Line::from(vec![
-            Span::styled(format!("Queue ({}): ", state.selection.len()), desc),
-            Span::styled(
-                format!("{b} branches · {s} stashes · {w} worktrees"),
-                Style::default().fg(theme.merged),
-            ),
-            Span::styled(
-                format!(" in {} repos  (x run) ", state.selection.repo_count()),
-                desc,
-            ),
+            Span::styled("Queue: ", desc),
+            Span::styled(state.selection.summary(), Style::default().fg(theme.merged)),
+            Span::styled(" (x run) ", desc),
         ])
     } else {
         Line::default()
     };
 
     let mut left = Vec::new();
-    if state.is_searching {
+    if state.editing_filter {
         left.push(Span::styled("Filter: ", key));
-        left.push(Span::raw(format!("{}▏", state.search_query)));
+        left.push(Span::raw(format!("{}▏", state.repo_filter)));
         left.push(Span::styled("  Enter/Esc done", desc));
     } else {
         for (k, d) in keymap::hints(state) {

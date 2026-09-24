@@ -15,15 +15,17 @@ pub const GLOBAL: &[Binding] = &[
 ];
 
 pub const REPOS: &[Binding] = &[
-    ("↑↓", "move"),
-    ("Space", "mark repository"),
-    ("→ / l", "open details"),
-    ("a", "smart-select merged & gone branches (marked repos)"),
+    ("↑↓ PgUp/Dn", "move"),
+    ("Space", "mark repository (targets of a/p/c/X)"),
+    ("→ / Enter", "open details"),
+    ("a", "smart-select merged & gone branches"),
     ("p", "prune remote-tracking branches"),
     ("c", "garbage collect"),
     ("X", "deep clean untracked & ignored files"),
+    ("/", "filter by path or remote"),
+    ("s", "cycle sort (path, cleanable, reclaimable, .git)"),
+    ("Esc", "clear filter, then marks"),
     ("g", "toggle graph"),
-    ("/", "filter"),
 ];
 
 pub const DETAILS: &[Binding] = &[
@@ -58,6 +60,7 @@ pub fn hints(state: &AppState) -> &'static [Binding] {
                 ("a", "smart select"),
                 ("p/c/X", "prune/gc/deep clean"),
                 ("/", "filter"),
+                ("s", "sort"),
                 ("?", "help"),
             ],
             Focus::Details => &[

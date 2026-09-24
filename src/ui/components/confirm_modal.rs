@@ -26,28 +26,15 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
                 state.selection.repo_count()
             )
         }
-        UiAction::PruneRemotes => {
-            let n = if state.selected_repositories.is_empty() {
-                1
-            } else {
-                state.selected_repositories.len()
-            };
-            format!("Prune remote tracking branches on {} repo(s)", n)
-        }
+        UiAction::PruneRemotes => format!(
+            "Prune remote tracking branches on {} repo(s)",
+            state.action_targets().len()
+        ),
         UiAction::GarbageCollect => {
-            let n = if state.selected_repositories.is_empty() {
-                1
-            } else {
-                state.selected_repositories.len()
-            };
-            format!("Garbage collect {} repo(s)", n)
+            format!("Garbage collect {} repo(s)", state.action_targets().len())
         }
         UiAction::DeepClean => {
-            let n = if state.selected_repositories.is_empty() {
-                1
-            } else {
-                state.selected_repositories.len()
-            };
+            let n = state.action_targets().len();
             format!(
                 "Deep clean untracked & ignored files in {} repo(s) (nested repos and keep-list spared)",
                 n

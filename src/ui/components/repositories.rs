@@ -1,165 +1,165 @@
+use crate::git::stats::format_size;
 use crate::ui::state::{AppState, Focus};
+use crate::ui::views;
 use ratatui::{
     Frame,
-    layout::Rect,
-    style::Style,
-    widgets::{
-        Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
-    },
+    layout::{Alignment, Constraint, Rect},
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
 };
 
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let theme = crate::ui::theme::get_theme(state.theme_index);
+    let focused = state.focus == Focus::Repositories;
+    let visible = views::visible_repos(state);
 
-    let repo_block_title = if state.is_scanning {
-        format!("Repositories (Scanning... {} found)", state.scanned_count)
-    } else if state.is_analyzing {
-        format!(
-            "Repositories (Analyzing... {}/{})",
-            state.analyzed_count, state.scanned_count
-        )
-    } else {
-        format!("Repositories ({})", state.repositories.len())
-    };
-
-    let mut title_suffix = if state.is_searching {
-        format!(" (Searching: {})", state.search_query)
-    } else {
-        String::new()
-    };
-
-    let selected_count = state.selected_repositories.len();
-    if selected_count > 0 {
-        let mut selected_recoverable = 0;
-        for &idx in &state.selected_repositories {
-            if let Some(repo) = state.repositories.get(idx) {
-                selected_recoverable += repo.untracked_size_bytes.unwrap_or(0);
-            }
-        }
-        title_suffix.push_str(&format!(
-            " [{} selected, {} recoverable]",
-            selected_count,
-            crate::git::stats::format_size(selected_recoverable)
+    let mut title = vec![Span::raw(format!(
+        " Repositories {}/{} ",
+        visible.len(),
+        state.repositories.len()
+    ))];
+    if state.repo_sort != crate::ui::state::RepoSort::Path {
+        title.push(Span::styled(
+            format!("· by {} ", state.repo_sort.label()),
+            Style::default().fg(theme.text_dimmed),
         ));
     }
-    let repo_block = Block::default()
-        .title(format!("{}{}", repo_block_title, title_suffix))
-        .borders(Borders::ALL)
-        .border_style(if state.focus == Focus::Repositories {
-            Style::default().fg(theme.border_active)
-        } else {
-            Style::default().fg(theme.border)
-        });
-
-    if state.is_scanning && state.repositories.is_empty() {
-        let frame = state.spinner();
-        let p = Paragraph::new(format!("{} Scanning directory structure...", frame))
-            .style(Style::default().fg(theme.text_dimmed))
-            .block(repo_block)
-            .alignment(ratatui::layout::Alignment::Center);
-        f.render_widget(p, area);
-    } else {
-        let repo_items: Vec<ListItem> = state
-            .repositories
-            .iter()
-            .enumerate()
-            .filter_map(|(i, repo)| {
-                let repo_name = repo
-                    .path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
-
-                if state.is_searching
-                    && !state.search_query.is_empty()
-                    && !repo_name
-                        .to_lowercase()
-                        .contains(&state.search_query.to_lowercase())
-                {
-                    return None;
-                }
-
-                let is_focused = i == state.repo_index;
-                let prefix = if is_focused { ">> " } else { "   " };
-                let is_selected = state.selected_repositories.contains(&i);
-                let checkbox = if is_selected { "[x] " } else { "[ ] " };
-                let mut content_spans = vec![
-                    ratatui::text::Span::raw(prefix),
-                    ratatui::text::Span::styled(
-                        checkbox,
-                        if is_selected {
-                            Style::default().fg(theme.primary)
-                        } else {
-                            Style::default().fg(theme.text_normal)
-                        },
-                    ),
-                    ratatui::text::Span::raw(state.display_path(&repo.path)),
-                ];
-                if let Some(branch) = &repo.current_branch {
-                    content_spans.push(ratatui::text::Span::styled(
-                        format!(" ({})", branch),
-                        Style::default().fg(theme.secondary),
-                    ));
-                }
-                if repo.is_dirty {
-                    content_spans.push(ratatui::text::Span::styled(
-                        " ●",
-                        Style::default().fg(theme.primary),
-                    ));
-                }
-                let frame = state.spinner();
-                let fmt = crate::git::stats::format_size;
-                match (repo.size_bytes, repo.size_finalized) {
-                    (Some(size), true) => {
-                        let untracked = repo.untracked_size_bytes.unwrap_or(0);
-                        let label = if untracked > 0 {
-                            format!(" [.git {} · {} untracked]", fmt(size), fmt(untracked))
-                        } else {
-                            format!(" [.git {}]", fmt(size))
-                        };
-                        content_spans.push(ratatui::text::Span::styled(
-                            label,
-                            Style::default().fg(theme.text_dimmed),
-                        ));
-                    }
-                    (Some(size), false) => {
-                        content_spans.push(ratatui::text::Span::styled(
-                            format!(
-                                " [.git {} · ~{} untracked {}]",
-                                fmt(size),
-                                fmt(repo.untracked_size_bytes.unwrap_or(0)),
-                                frame
-                            ),
-                            Style::default().fg(theme.text_dimmed),
-                        ));
-                    }
-                    (None, _) => {
-                        content_spans.push(ratatui::text::Span::styled(
-                            format!(" [{}]", frame),
-                            Style::default().fg(theme.text_dimmed),
-                        ));
-                    }
-                }
-
-                let mut style = Style::default().fg(theme.text_normal);
-                if i == state.repo_index && state.focus == Focus::Repositories {
-                    style = style.fg(theme.primary);
-                }
-                Some(ListItem::new(ratatui::text::Line::from(content_spans)).style(style))
-            })
-            .collect();
-
-        let repo_count = repo_items.len();
-        let target_list = List::new(repo_items).block(repo_block);
-        f.render_stateful_widget(target_list, area, &mut state.repo_state);
-
-        let mut repo_scrollbar_state = ScrollbarState::new(repo_count.saturating_sub(1))
-            .position(state.repo_state.selected().unwrap_or(0));
-        f.render_stateful_widget(
-            Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight),
-            area,
-            &mut repo_scrollbar_state,
-        );
+    if !state.repo_filter.is_empty() || state.editing_filter {
+        title.push(Span::styled(
+            format!("· /{} ", state.repo_filter),
+            Style::default().fg(theme.primary),
+        ));
     }
+    if !state.marked_repos.is_empty() {
+        title.push(Span::styled(
+            format!("· {} marked ", state.marked_repos.len()),
+            Style::default().fg(theme.secondary),
+        ));
+    }
+    let block = Block::default()
+        .title(Line::from(title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(if focused {
+            theme.border_active
+        } else {
+            theme.border
+        }));
+
+    if visible.is_empty() {
+        let message = if state.is_scanning {
+            format!("{} Scanning {}…", state.spinner(), state.root.display())
+        } else if state.repositories.is_empty() {
+            format!("No Git repository found under {}", state.root.display())
+        } else {
+            format!("No repository matches \"{}\"", state.repo_filter)
+        };
+        f.render_widget(
+            Paragraph::new(message)
+                .style(Style::default().fg(theme.text_dimmed))
+                .alignment(Alignment::Center)
+                .block(block),
+            area,
+        );
+        return;
+    }
+
+    let dim = Style::default().fg(theme.text_dimmed);
+    let focused_path = state.focused().map(|r| r.path.clone());
+    let rows: Vec<Row> = visible
+        .iter()
+        .map(|&i| {
+            let repo = &state.repositories[i];
+            let mark = if state.marked_repos.contains(&repo.path) {
+                Span::styled("[x]", Style::default().fg(theme.primary))
+            } else {
+                Span::styled("[ ]", dim)
+            };
+            let queued = state.selection.repo(&repo.path).map_or(0, |s| s.len());
+            let name = Span::styled(
+                state.display_path(&repo.path),
+                if queued > 0 {
+                    Style::default().fg(theme.merged)
+                } else {
+                    Style::default().fg(theme.text_normal)
+                },
+            );
+
+            let branch = if let Some(error) = &repo.error {
+                Line::from(Span::styled(
+                    format!("⚠ {}", error.lines().next().unwrap_or("error")),
+                    Style::default().fg(theme.error),
+                ))
+            } else if !repo.analyzed {
+                Line::from(Span::styled(format!("{} analyzing", state.spinner()), dim))
+            } else {
+                let mut spans = vec![Span::styled(
+                    repo.current_branch
+                        .clone()
+                        .unwrap_or_else(|| "(detached)".into()),
+                    Style::default().fg(theme.secondary),
+                )];
+                if repo.is_dirty {
+                    spans.push(Span::styled(" ●", Style::default().fg(theme.primary)));
+                }
+                Line::from(spans)
+            };
+
+            let cleanable = views::cleanable_branches(repo, &state.config);
+            let cleanable = if cleanable > 0 {
+                Span::styled(cleanable.to_string(), Style::default().fg(theme.merged))
+            } else {
+                Span::styled("·", dim)
+            };
+
+            let git_size = repo.size_bytes.map(format_size).unwrap_or_default();
+            let reclaimable = match (repo.untracked_size_bytes, repo.size_finalized) {
+                (Some(bytes), true) if bytes > 0 => format_size(bytes),
+                (Some(_), true) => "·".to_string(),
+                (Some(bytes), false) => format!("~{}", format_size(bytes)),
+                (None, false) if repo.analyzed && repo.error.is_none() => {
+                    state.spinner().to_string()
+                }
+                (None, _) => String::new(),
+            };
+
+            Row::new(vec![
+                Cell::from(mark),
+                Cell::from(name),
+                Cell::from(branch),
+                Cell::from(Line::from(cleanable).alignment(Alignment::Right)),
+                Cell::from(Line::from(git_size).alignment(Alignment::Right)),
+                Cell::from(Line::from(reclaimable).alignment(Alignment::Right)),
+            ])
+        })
+        .collect();
+
+    let header = Row::new(["", "Repository", "Branch", "Cln", ".git", "Reclaim"])
+        .style(dim.add_modifier(Modifier::BOLD));
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(3),
+            Constraint::Fill(1),
+            Constraint::Length(12),
+            Constraint::Length(3),
+            Constraint::Length(8),
+            Constraint::Length(8),
+        ],
+    )
+    .header(header)
+    .block(block)
+    .row_highlight_style(if focused {
+        Style::default().add_modifier(Modifier::REVERSED)
+    } else {
+        Style::default().add_modifier(Modifier::BOLD)
+    });
+
+    let cursor = focused_path.and_then(|path| {
+        visible
+            .iter()
+            .position(|&i| state.repositories[i].path == path)
+    });
+    state.repo_table.select(cursor);
+    f.render_stateful_widget(table, area, &mut state.repo_table);
 }

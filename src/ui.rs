@@ -19,6 +19,7 @@ pub mod loader;
 pub mod selection;
 pub mod state;
 pub mod theme;
+pub mod views;
 
 #[cfg(test)]
 mod tests;
@@ -153,28 +154,23 @@ fn apply_event(state: &mut AppState, event: ScannerEvent, worker: &crate::worker
     };
     match event {
         ScannerEvent::RepoFound(path) => {
-            state.scanned_count += 1;
             state
                 .repositories
                 .push(crate::git::RepoStatus::pending(path));
         }
         ScannerEvent::ScanComplete => state.is_scanning = false,
-        ScannerEvent::RepoAnalyzed(repo) => {
-            match find(state, &repo.path) {
-                Some(i) => {
-                    state.selection.retain_existing(&repo);
-                    state.repositories[i] = repo;
-                }
-                None => state.repositories.push(repo),
+        ScannerEvent::RepoAnalyzed(repo) => match find(state, &repo.path) {
+            Some(i) => {
+                state.selection.retain_existing(&repo);
+                state.repositories[i] = repo;
             }
-            state.analyzed_count += 1;
-        }
+            None => state.repositories.push(repo),
+        },
         ScannerEvent::RepoFailed { path, error } => {
             if let Some(i) = find(state, &path) {
                 state.repositories[i].analyzed = true;
                 state.repositories[i].error = Some(error);
             }
-            state.analyzed_count += 1;
         }
         ScannerEvent::SizePartial {
             path,
@@ -260,13 +256,14 @@ fn apply_event(state: &mut AppState, event: ScannerEvent, worker: &crate::worker
 /// Starts background loads for whatever the current view needs.
 fn request_loads(state: &mut AppState, tx: &Sender<ScannerEvent>) {
     if (state.show_graph || state.graph_maximized)
-        && let Some(repo) = state.repositories.get(state.repo_index)
+        && let Some(repo) = state.focused()
         && repo.analyzed
         && repo.graph_lines.is_none()
         && !state.graph_loading.contains(&repo.path)
     {
-        state.graph_loading.insert(repo.path.clone());
-        loader::load_graph(tx, repo.path.clone());
+        let path = repo.path.clone();
+        state.graph_loading.insert(path.clone());
+        loader::load_graph(tx, path);
     }
 
     if matches!(state.pending_action, Some(UiAction::DeepClean))
@@ -274,42 +271,20 @@ fn request_loads(state: &mut AppState, tx: &Sender<ScannerEvent>) {
         && !state.preview_loading
     {
         state.preview_loading = true;
-        let paths: Vec<PathBuf> = if state.selected_repositories.is_empty() {
-            state
-                .repositories
-                .get(state.repo_index)
-                .map(|r| vec![r.path.clone()])
-                .unwrap_or_default()
-        } else {
-            state
-                .selected_repositories
-                .iter()
-                .filter_map(|&i| state.repositories.get(i).map(|r| r.path.clone()))
-                .collect()
-        };
-        loader::load_deep_clean_preview(tx, paths, state.config.deep_clean_keep.clone());
+        loader::load_deep_clean_preview(
+            tx,
+            state.action_targets(),
+            state.config.deep_clean_keep.clone(),
+        );
     }
 
-    if state.diff_modal_open && state.diff_lines.is_none() && !state.diff_requested {
+    if let Some((repo, target)) = &state.diff_target
+        && state.diff_lines.is_none()
+        && !state.diff_requested
+    {
         state.diff_requested = true;
         state.diff_request_id += 1;
-        let Some(repo) = state.repositories.get(state.repo_index) else {
-            return;
-        };
-        let target = if let Some(b) = repo.branches.get(state.detail_index) {
-            Some(loader::DiffTarget::Branch {
-                name: b.name.clone(),
-                base: repo.default_branch.clone().filter(|d| d != &b.name),
-            })
-        } else {
-            repo.stashes
-                .get(state.detail_index - repo.branches.len())
-                .map(|s| loader::DiffTarget::Stash { sha: s.sha.clone() })
-        };
-        match target {
-            Some(target) => loader::load_diff(tx, state.diff_request_id, repo.path.clone(), target),
-            None => state.diff_lines = Some(vec!["No diff for worktrees.".to_string()]),
-        }
+        loader::load_diff(tx, state.diff_request_id, repo.clone(), target.clone());
     }
 }
 
@@ -349,7 +324,7 @@ fn draw_repos_tab(f: &mut Frame, state: &mut AppState, area: ratatui::layout::Re
             Constraint::Percentage(40),
         ]
     } else {
-        vec![Constraint::Percentage(40), Constraint::Percentage(60)]
+        vec![Constraint::Percentage(45), Constraint::Percentage(55)]
     };
     let panes = Layout::horizontal(constraints).split(area);
     components::repositories::render(f, state, panes[0]);
@@ -363,38 +338,20 @@ fn draw_repos_tab(f: &mut Frame, state: &mut AppState, area: ratatui::layout::Re
 fn build_plans(state: &AppState, action: UiAction) -> Vec<crate::engine::RepoPlan> {
     use crate::engine::{Operation, RepoPlan};
 
-    if matches!(action, UiAction::CleanRepo) {
-        return state.selection.plans(&state.repositories, &state.config);
-    }
-
-    let focused = state.repositories.get(state.repo_index);
-    let targets: Vec<&crate::git::RepoStatus> = if state.selected_repositories.is_empty() {
-        focused.into_iter().collect()
-    } else {
-        let mut indices: Vec<usize> = state.selected_repositories.iter().copied().collect();
-        indices.sort_unstable();
-        indices
-            .into_iter()
-            .filter_map(|i| state.repositories.get(i))
-            .collect()
+    let operation = match action {
+        UiAction::CleanRepo => return state.selection.plans(&state.repositories, &state.config),
+        UiAction::PruneRemotes => Operation::PruneRemotes,
+        UiAction::GarbageCollect => Operation::GarbageCollect,
+        UiAction::DeepClean => Operation::DeepClean {
+            keep: state.config.deep_clean_keep.clone(),
+        },
     };
-
-    targets
+    state
+        .action_targets()
         .into_iter()
-        .map(|repo| {
-            let operations = match action {
-                UiAction::CleanRepo => unreachable!("handled above"),
-                UiAction::PruneRemotes => vec![Operation::PruneRemotes],
-                UiAction::GarbageCollect => vec![Operation::GarbageCollect],
-                UiAction::DeepClean => vec![Operation::DeepClean {
-                    keep: state.config.deep_clean_keep.clone(),
-                }],
-            };
-            RepoPlan {
-                repo: repo.path.clone(),
-                operations,
-            }
+        .map(|repo| RepoPlan {
+            repo,
+            operations: vec![operation.clone()],
         })
-        .filter(|plan| !plan.operations.is_empty())
         .collect()
 }

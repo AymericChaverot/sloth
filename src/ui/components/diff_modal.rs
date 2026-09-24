@@ -9,7 +9,7 @@ use ratatui::{
 };
 
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
-    if !state.diff_modal_open {
+    if state.diff_target.is_none() {
         return;
     }
     let theme = crate::ui::theme::get_theme(state.theme_index);
