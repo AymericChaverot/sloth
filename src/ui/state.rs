@@ -36,6 +36,35 @@ pub enum ScannerEvent {
         id: u64,
         lines: Vec<String>,
     },
+    /// One operation of a running cleanup finished.
+    OperationDone(crate::engine::OpResult),
+    ExecutionFinished,
+}
+
+/// Progress and results of a cleanup run.
+#[derive(Debug, Default)]
+pub struct Execution {
+    pub total: usize,
+    pub results: Vec<crate::engine::OpResult>,
+    pub finished: bool,
+    pub scroll: u16,
+}
+
+impl Execution {
+    pub fn failed(&self) -> usize {
+        self.results.iter().filter(|r| !r.is_ok()).count()
+    }
+
+    pub fn freed_bytes(&self) -> u64 {
+        self.results.iter().map(|r| r.freed_bytes).sum()
+    }
+
+    /// Whether anything restorable with `sloth restore` was deleted.
+    pub fn restorable(&self) -> bool {
+        self.results
+            .iter()
+            .any(|r| crate::journal::Entry::from_result(0, r).is_some())
+    }
 }
 
 #[derive(PartialEq, Debug)]
@@ -92,10 +121,14 @@ pub struct AppState {
     pub confirm_preview_lines: Option<Vec<String>>,
     pub preview_loading: bool,
     pub config: crate::config::Config,
+    /// Directory that was scanned.
+    pub root: PathBuf,
+    /// Cleanup running (or just finished) inside the TUI.
+    pub execution: Option<Execution>,
 }
 
 impl AppState {
-    pub fn new(config: crate::config::Config) -> Self {
+    pub fn new(config: crate::config::Config, root: PathBuf) -> Self {
         let mut repo_state = ListState::default();
         repo_state.select(Some(0));
         let mut detail_state = ListState::default();
@@ -131,11 +164,24 @@ impl AppState {
             diff_requested: false,
             theme_index: crate::ui::theme::index_by_name(config.theme.as_deref()),
             config,
+            root,
+            execution: None,
             is_searching: false,
             search_query: String::new(),
             pending_action: None,
             confirm_preview_lines: None,
             preview_loading: false,
+        }
+    }
+
+    /// Path relative to the scanned directory (the directory name for the root itself).
+    pub fn display_path(&self, path: &std::path::Path) -> String {
+        match path.strip_prefix(&self.root) {
+            Ok(rel) if !rel.as_os_str().is_empty() => rel.display().to_string(),
+            _ => path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.display().to_string()),
         }
     }
 
@@ -150,6 +196,7 @@ impl AppState {
         self.is_scanning
             || self.is_analyzing
             || self.preview_loading
+            || self.execution.as_ref().is_some_and(|e| !e.finished)
             || !self.graph_loading.is_empty()
             || (self.diff_modal_open && self.diff_lines.is_none())
             || self
@@ -165,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_app_state_initialization() {
-        let state = AppState::new(crate::config::Config::default());
+        let state = AppState::new(crate::config::Config::default(), PathBuf::from("."));
         assert_eq!(state.focus, Focus::Repositories);
         assert_eq!(state.repo_index, 0);
         assert_eq!(state.detail_index, 0);

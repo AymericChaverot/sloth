@@ -19,13 +19,25 @@ pub fn handle_events(state: &mut AppState, timeout: Duration) -> std::io::Result
 
 fn handle_key(state: &mut AppState, key: crossterm::event::KeyEvent) {
     {
+        // A running cleanup blocks input; its results stay until dismissed.
+        if let Some(execution) = &mut state.execution {
+            match key.code {
+                KeyCode::Enter | KeyCode::Esc | KeyCode::Char('q') if execution.finished => {
+                    state.execution = None;
+                }
+                KeyCode::Up => execution.scroll = execution.scroll.saturating_sub(1),
+                KeyCode::Down => execution.scroll = execution.scroll.saturating_add(1),
+                _ => {}
+            }
+            return;
+        }
+
         // Confirm modal takes priority over everything else
         if state.pending_action.is_some() {
             match key.code {
                 KeyCode::Char('y') | KeyCode::Char('Y') => {
                     state.action = state.pending_action.take();
                     state.confirm_preview_lines = None;
-                    state.should_quit = true;
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                     state.pending_action = None;

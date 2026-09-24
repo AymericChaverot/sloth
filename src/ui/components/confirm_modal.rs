@@ -1,7 +1,7 @@
 use crate::ui::state::{AppState, UiAction};
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
@@ -157,29 +157,9 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
         );
 
     let paragraph = Paragraph::new(lines).block(block);
-    let modal_area = centered_rect(55, 70, area);
+    let modal_area = super::centered_rect(55, 70, area);
     f.render_widget(Clear, modal_area);
     f.render_widget(paragraph, modal_area);
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
 
 /// What could be lost by running `op`, if anything.

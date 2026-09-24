@@ -28,13 +28,12 @@ const ANIMATION_TICK: Duration = Duration::from_millis(80);
 /// ...and while idle: only background events can change the screen.
 const IDLE_TICK: Duration = Duration::from_millis(250);
 
-type TuiResult = io::Result<Option<Vec<crate::engine::RepoPlan>>>;
-
 pub fn run_tui(
     mut state: AppState,
     rx: Receiver<ScannerEvent>,
     tx: Sender<ScannerEvent>,
-) -> TuiResult {
+    worker: crate::worker::Worker,
+) -> io::Result<()> {
     install_panic_hook();
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
@@ -45,7 +44,11 @@ pub fn run_tui(
 
     loop {
         while let Ok(event) = rx.try_recv() {
-            apply_event(&mut state, event);
+            apply_event(&mut state, event, &worker);
+            dirty = true;
+        }
+        if let Some(action) = state.action.take() {
+            start_execution(&mut state, action, &tx);
             dirty = true;
         }
         request_loads(&mut state, &tx);
@@ -93,10 +96,36 @@ pub fn run_tui(
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
 
-    Ok(state
-        .action
-        .take()
-        .map(|action| build_plans(&state, action)))
+    Ok(())
+}
+
+/// Runs the confirmed action in the background; progress comes back as events.
+fn start_execution(state: &mut AppState, action: UiAction, tx: &Sender<ScannerEvent>) {
+    use crate::engine::{Observer, OpResult};
+
+    let plans = build_plans(state, action);
+    if plans.is_empty() {
+        return;
+    }
+    state.execution = Some(state::Execution {
+        total: plans.iter().map(|p| p.operations.len()).sum(),
+        ..Default::default()
+    });
+
+    let record = crate::journal::Journal::open_default()
+        .map(|journal| journal.observer(crate::git::stats::now_ts()));
+    let progress = tx.clone();
+    let observer: Observer = std::sync::Arc::new(move |result: &OpResult| {
+        if let Some(record) = &record {
+            record(result);
+        }
+        let _ = progress.send(ScannerEvent::OperationDone(result.clone()));
+    });
+    let done = tx.clone();
+    tokio::spawn(async move {
+        crate::engine::execute(plans, false, crate::sys::RealSystem, Some(observer)).await;
+        let _ = done.send(ScannerEvent::ExecutionFinished);
+    });
 }
 
 /// Leaves raw mode and the alternate screen before a panic message is
@@ -111,7 +140,7 @@ fn install_panic_hook() {
 }
 
 /// Applies a background event to the state.
-fn apply_event(state: &mut AppState, event: ScannerEvent) {
+fn apply_event(state: &mut AppState, event: ScannerEvent, worker: &crate::worker::Worker) {
     let find = |state: &AppState, path: &std::path::Path| {
         state.repositories.iter().position(|r| r.path == path)
     };
@@ -125,7 +154,10 @@ fn apply_event(state: &mut AppState, event: ScannerEvent) {
         ScannerEvent::ScanComplete => state.is_scanning = false,
         ScannerEvent::RepoAnalyzed(repo) => {
             match find(state, &repo.path) {
-                Some(i) => state.repositories[i] = repo,
+                Some(i) => {
+                    state.selection.retain_existing(&repo);
+                    state.repositories[i] = repo;
+                }
                 None => state.repositories.push(repo),
             }
             state.analyzed_count += 1;
@@ -179,6 +211,36 @@ fn apply_event(state: &mut AppState, event: ScannerEvent) {
             if let Some(i) = find(state, &path) {
                 state.repositories[i].graph_lines = Some(lines);
             }
+        }
+        ScannerEvent::OperationDone(result) => {
+            if let Some(execution) = &mut state.execution {
+                execution.results.push(result);
+            }
+        }
+        ScannerEvent::ExecutionFinished => {
+            let Some(execution) = &mut state.execution else {
+                return;
+            };
+            execution.finished = true;
+            state.selection.forget_done(&execution.results);
+
+            // Re-analyze what changed; keep the repository order stable.
+            let mut touched: Vec<PathBuf> = Vec::new();
+            for result in &execution.results {
+                if !touched.contains(&result.repo) {
+                    touched.push(result.repo.clone());
+                }
+            }
+            for repo in state
+                .repositories
+                .iter_mut()
+                .filter(|r| touched.contains(&r.path))
+            {
+                repo.analyzed = false;
+                repo.graph_lines = None;
+            }
+            state.is_analyzing = true;
+            worker.refresh(touched);
         }
         ScannerEvent::DiffLoaded { id, lines } => {
             if id == state.diff_request_id {
@@ -312,6 +374,8 @@ fn draw(f: &mut Frame, state: &mut AppState) {
 
     // Confirm Modal Overlay (if a pending action awaits confirmation)
     components::confirm_modal::render(f, state, f.area());
+
+    components::execution_modal::render(f, state, f.area());
 }
 
 /// Turns the confirmed action and the current selection into engine plans.

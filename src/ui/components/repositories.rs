@@ -94,7 +94,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                             Style::default().fg(theme.text_normal)
                         },
                     ),
-                    ratatui::text::Span::raw(repo.path.display().to_string()),
+                    ratatui::text::Span::raw(state.display_path(&repo.path)),
                 ];
                 if let Some(branch) = &repo.current_branch {
                     content_spans.push(ratatui::text::Span::styled(

@@ -60,6 +60,19 @@ impl Worker {
         });
     }
 
+    /// Re-analyzes (and re-measures) the given repositories, e.g. after a cleanup.
+    pub fn refresh(&self, paths: Vec<PathBuf>) {
+        let worker = self.clone();
+        tokio::spawn(async move {
+            let mut analyses = tokio::task::JoinSet::new();
+            for path in paths {
+                analyses.spawn(worker.clone().analyze_one(path));
+            }
+            while analyses.join_next().await.is_some() {}
+            let _ = worker.events.send(ScannerEvent::AnalysisComplete);
+        });
+    }
+
     async fn analyze_one(self, path: PathBuf) {
         let Ok(_slot) = self.analysis_slots.clone().acquire_owned().await else {
             return;

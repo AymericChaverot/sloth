@@ -2,7 +2,7 @@
 //! queue: whatever view an item was selected from, it ends up here.
 
 use crate::config::Config;
-use crate::engine::RepoPlan;
+use crate::engine::{OpResult, Operation, RepoPlan};
 use crate::git::RepoStatus;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -106,6 +106,35 @@ impl Selection {
         })
     }
 
+    /// Drops the items of `repo` that no longer exist, e.g. after a refresh.
+    pub fn retain_existing(&mut self, repo: &RepoStatus) {
+        let Some(sel) = self.repos.get_mut(&repo.path) else {
+            return;
+        };
+        sel.branches
+            .retain(|b| repo.branches.iter().any(|x| &x.name == b));
+        sel.stashes
+            .retain(|s| repo.stashes.iter().any(|x| &x.sha == s));
+        sel.worktrees
+            .retain(|w| repo.worktrees.iter().any(|x| &x.path == w));
+        if sel.is_empty() {
+            self.repos.remove(&repo.path);
+        }
+    }
+
+    /// Removes the items that were successfully cleaned up.
+    pub fn forget_done(&mut self, results: &[OpResult]) {
+        for result in results.iter().filter(|r| r.is_ok()) {
+            let (kind, id) = match &result.operation {
+                Operation::DeleteBranch { name, .. } => (ItemKind::Branch, name),
+                Operation::DropStash { sha, .. } => (ItemKind::Stash, sha),
+                Operation::RemoveWorktree { path, .. } => (ItemKind::Worktree, path),
+                _ => continue,
+            };
+            self.remove(&result.repo, kind, id);
+        }
+    }
+
     /// Engine plans for the whole selection. Protected items are filtered out.
     pub fn plans(&self, repos: &[RepoStatus], config: &Config) -> Vec<RepoPlan> {
         self.repos
@@ -197,5 +226,38 @@ mod tests {
             }]
         );
         assert_eq!(plans[1].operations.len(), 2);
+    }
+
+    #[test]
+    fn forgets_items_that_disappeared() {
+        let mut sel = Selection::default();
+        sel.insert(Path::new("/a"), ItemKind::Branch, "gone");
+        sel.insert(Path::new("/a"), ItemKind::Branch, "kept");
+        sel.retain_existing(&repo("/a", &["kept"]));
+        assert_eq!(sel.len(), 1);
+        assert!(sel.contains(Path::new("/a"), ItemKind::Branch, "kept"));
+    }
+
+    #[test]
+    fn forgets_only_successful_operations() {
+        let mut sel = Selection::default();
+        sel.insert(Path::new("/a"), ItemKind::Branch, "done");
+        sel.insert(Path::new("/a"), ItemKind::Branch, "failed");
+        let result = |name: &str, ok: bool| OpResult {
+            repo: PathBuf::from("/a"),
+            operation: Operation::DeleteBranch {
+                name: name.into(),
+                sha: String::new(),
+            },
+            outcome: if ok {
+                Ok(String::new())
+            } else {
+                Err(String::new())
+            },
+            freed_bytes: 0,
+        };
+        sel.forget_done(&[result("done", true), result("failed", false)]);
+        assert!(!sel.contains(Path::new("/a"), ItemKind::Branch, "done"));
+        assert!(sel.contains(Path::new("/a"), ItemKind::Branch, "failed"));
     }
 }
