@@ -56,7 +56,16 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent) {
             Focus::Details => details_key(state, key.code),
             Focus::GitGraph => graph_key(state, key.code),
         },
+        Tab::Branches => branches_key(state, key.code),
         Tab::Dashboard => {}
+    }
+}
+
+/// The filter text edited with `/` in the current tab.
+fn active_filter(state: &mut AppState) -> &mut String {
+    match state.tab {
+        Tab::Branches => &mut state.branch_query,
+        _ => &mut state.repo_filter,
     }
 }
 
@@ -107,12 +116,12 @@ fn filter_key(state: &mut AppState, code: KeyCode) {
         KeyCode::Enter => state.editing_filter = false,
         KeyCode::Esc => {
             state.editing_filter = false;
-            state.repo_filter.clear();
+            active_filter(state).clear();
         }
         KeyCode::Backspace => {
-            state.repo_filter.pop();
+            active_filter(state).pop();
         }
-        KeyCode::Char(c) => state.repo_filter.push(c),
+        KeyCode::Char(c) => active_filter(state).push(c),
         _ => {}
     }
 }
@@ -273,6 +282,96 @@ fn details_key(state: &mut AppState, code: KeyCode) {
             }
         }
         KeyCode::Char('g') => state.show_graph = !state.show_graph,
+        _ => {}
+    }
+}
+
+fn branches_key(state: &mut AppState, code: KeyCode) {
+    let rows = views::branch_rows(state);
+    let last = rows.len().saturating_sub(1);
+    let current = rows.get(state.branch_cursor).map(|&(ri, bi)| {
+        let repo = &state.repositories[ri];
+        (repo.path.clone(), repo.branches[bi].name.clone())
+    });
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.branch_cursor = state.branch_cursor.saturating_sub(1)
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.branch_cursor = (state.branch_cursor + 1).min(last)
+        }
+        KeyCode::PageUp => state.branch_cursor = state.branch_cursor.saturating_sub(PAGE as usize),
+        KeyCode::PageDown => state.branch_cursor = (state.branch_cursor + PAGE as usize).min(last),
+        KeyCode::Home => state.branch_cursor = 0,
+        KeyCode::End => state.branch_cursor = last,
+        KeyCode::Char('/') => state.editing_filter = true,
+        KeyCode::Esc => state.branch_query.clear(),
+        KeyCode::Char('f') => {
+            state.branch_filter = state.branch_filter.next();
+            state.branch_cursor = 0;
+        }
+        KeyCode::Char('s') => state.branch_sort = state.branch_sort.next(),
+        KeyCode::Char(' ') => {
+            if let Some((path, name)) = current {
+                let repo = state.repo(&path).expect("row comes from the state");
+                let branch = repo.branches.iter().find(|b| b.name == name);
+                match branch.and_then(|b| crate::cleanup::branch_protection(repo, b, &state.config))
+                {
+                    Some(p) => state.warn(format!("Protected: {}", p.label())),
+                    None => {
+                        state.selection.toggle(&path, ItemKind::Branch, &name);
+                        state.branch_cursor = (state.branch_cursor + 1).min(last);
+                    }
+                }
+            }
+        }
+        KeyCode::Char('a') | KeyCode::Char('A') => {
+            // Select the listed branches: only the cleanable ones with `a`,
+            // every unprotected one with `A`.
+            let mut added = 0;
+            for &(ri, bi) in &rows {
+                let repo = &state.repositories[ri];
+                let branch = &repo.branches[bi];
+                let eligible = if code == KeyCode::Char('a') {
+                    crate::cleanup::is_smart_candidate(repo, branch, &state.config)
+                } else {
+                    crate::cleanup::branch_protection(repo, branch, &state.config).is_none()
+                };
+                if eligible
+                    && !state
+                        .selection
+                        .contains(&repo.path, ItemKind::Branch, &branch.name)
+                {
+                    let (path, name) = (repo.path.clone(), branch.name.clone());
+                    state.selection.insert(&path, ItemKind::Branch, &name);
+                    added += 1;
+                }
+            }
+            state.notify(format!("{added} branches added to the queue"));
+        }
+        KeyCode::Char('v') => {
+            if let Some((path, name)) = current {
+                let base = state
+                    .repo(&path)
+                    .and_then(|r| r.default_branch.clone())
+                    .filter(|d| d != &name);
+                state.open_diff(path, DiffTarget::Branch { name, base });
+            }
+        }
+        KeyCode::Enter => {
+            // Jump to the branch in its repository.
+            if let Some((path, name)) = current {
+                let index = state
+                    .repo(&path)
+                    .and_then(|r| r.branches.iter().position(|b| b.name == name))
+                    .unwrap_or(0);
+                state.repo_filter.clear();
+                state.focus_repo(path);
+                state.detail_index = index;
+                state.focus = Focus::Details;
+                state.tab = Tab::Repos;
+            }
+        }
         _ => {}
     }
 }

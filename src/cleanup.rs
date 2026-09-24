@@ -48,6 +48,13 @@ pub fn worktree_protection(worktree: &WorktreeInfo) -> Option<Protection> {
     worktree.is_main.then_some(Protection::MainWorktree)
 }
 
+/// No commit for more than `stale_days` days.
+pub fn is_stale(branch: &BranchInfo, config: &Config, now: i64) -> bool {
+    branch
+        .last_commit_ts
+        .is_some_and(|ts| now - ts > i64::from(config.stale_days) * 86_400)
+}
+
 /// Branches that are safe to clean up: merged (in any way) or whose upstream is gone.
 pub fn is_smart_candidate(repo: &RepoStatus, branch: &BranchInfo, config: &Config) -> bool {
     branch_protection(repo, branch, config).is_none()

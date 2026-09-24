@@ -83,7 +83,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             };
             let mut cells = vec![Cell::from(mark)];
             cells.extend(match row {
-                DetailRow::Branch(b) => branch_cells(repo, b, protection, theme, now),
+                DetailRow::Branch(b) => branch_cells(repo, b, &state.config, theme, now),
                 DetailRow::Stash(s) => [
                     Cell::from(Line::from(vec![
                         Span::styled("stash ", dim),
@@ -160,15 +160,20 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     state.detail_index = detail_index;
 }
 
-fn branch_cells<'a>(
+/// Name, status, age, ahead/behind and diff cells of a branch row.
+pub(crate) fn branch_cells<'a>(
     repo: &crate::git::RepoStatus,
     b: &'a crate::git::models::BranchInfo,
-    protection: Option<crate::cleanup::Protection>,
+    config: &crate::config::Config,
     theme: &Theme,
     now: i64,
 ) -> [Cell<'a>; 5] {
     let dim = Style::default().fg(theme.text_dimmed);
+    let protection = crate::cleanup::branch_protection(repo, b, config);
     let mut status = Vec::new();
+    if protection.is_none() && crate::cleanup::is_stale(b, config, now) {
+        status.push(badge("stale", theme.text_dimmed));
+    }
     if let Some(p) = protection {
         status.push(badge(p.label(), theme.text_dimmed));
     }

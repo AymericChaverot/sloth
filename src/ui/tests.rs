@@ -168,6 +168,29 @@ fn protected_items_cannot_be_selected() {
 }
 
 #[test]
+fn branches_tab_lists_cleanable_branches_of_every_repository() {
+    let mut state = fixture_state();
+    state.tab = Tab::Branches;
+    insta::assert_snapshot!(render(&mut state, 120, 12));
+}
+
+#[test]
+fn branches_tab_all_filter() {
+    let mut state = fixture_state();
+    state.tab = Tab::Branches;
+    press(&mut state, "fffff"); // cleanable → merged → gone → stale → unmerged → all
+    insta::assert_snapshot!(render(&mut state, 120, 14));
+}
+
+#[test]
+fn branches_tab_selects_across_repositories() {
+    let mut state = fixture_state();
+    state.tab = Tab::Branches;
+    press(&mut state, "a");
+    assert_eq!(state.selection.summary(), "3 branches in 2 repos");
+}
+
+#[test]
 fn dashboard_tab() {
     let mut state = fixture_state();
     state.tab = Tab::Dashboard;

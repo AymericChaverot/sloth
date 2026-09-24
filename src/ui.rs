@@ -301,6 +301,7 @@ pub(crate) fn draw(f: &mut Frame, state: &mut AppState) {
     components::tabs::render(f, state, tabs);
     match state.tab {
         state::Tab::Repos => draw_repos_tab(f, state, body),
+        state::Tab::Branches => components::branches::render(f, state, body),
         state::Tab::Dashboard => components::dashboard::render(f, state, body),
     }
     components::help::render_status_bar(f, state, status);

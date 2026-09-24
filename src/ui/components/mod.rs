@@ -1,3 +1,4 @@
+pub mod branches;
 pub mod confirm_modal;
 pub mod dashboard;
 pub mod details;

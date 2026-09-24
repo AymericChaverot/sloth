@@ -3,13 +3,13 @@ source: src/ui/tests.rs
 expression: "render(&mut state, 120, 20)"
 ---
 "🦥 sloth v0.1.0  /work · 3 repos · .git 168.0 MB · 1.5 GB reclaimable · 3 cleanable branches                   [Default]" Hidden by multi-width symbols: [(1, " ")]
-" 1 Repos │ 2 Dashboard                                                                                                  "
+" 1 Repos │ 2 Branches │ 3 Dashboard                                                                                     "
 "┌ Repositories 3/3 ──────────────────────────────────┐┌ api · github.com/acme/api · 1 queued ──────────────────────────┐"
 "│    Repository    Branch       Cln .git     Reclaim ││    Name                Status        Age  ↑↓        Diff       │"
 "│[ ] api           main ●         2  48.0 MB 310.0 MB││[-] main                default         1d                      │"
-"│[ ] docs          main           ·                  ││[x] feat/login          merged gone    3mo    ↑0 ↓12            │"
+"│[ ] docs          main           ·                  ││[x] feat/login          stale merged   3mo    ↑0 ↓12            │"
 "│[ ] web           main           1 120.0 MB   1.2 GB││[ ] wip/cache           local ⚠         2d     ↑3 ↓0     +120 -4│"
-"│                                                    ││[ ] fix/typo            squashed loca  6mo    ↑2 ↓30            │"
+"│                                                    ││[ ] fix/typo            stale squashe  6mo    ↑2 ↓30            │"
 "│                                                    ││[ ] stash WIP on main:                 40d                      │"
 "│                                                    ││[-] worktree api [main] main                                    │"
 "│                                                    ││[ ] worktree api-hotfix dirty                            12.0 MB│"

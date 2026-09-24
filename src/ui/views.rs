@@ -4,7 +4,7 @@
 use crate::git::RepoStatus;
 use crate::git::models::{BranchInfo, StashInfo, WorktreeInfo};
 use crate::ui::selection::ItemKind;
-use crate::ui::state::{AppState, RepoSort};
+use crate::ui::state::{AppState, BranchFilter, BranchSort, RepoSort};
 
 /// Indices into `state.repositories` of the repositories to list, filtered and sorted.
 pub fn visible_repos(state: &AppState) -> Vec<usize> {
@@ -52,6 +52,52 @@ pub fn cleanable_branches(repo: &RepoStatus, config: &crate::config::Config) -> 
         .iter()
         .filter(|b| crate::cleanup::is_smart_candidate(repo, b, config))
         .count()
+}
+
+/// `(repository index, branch index)` of the rows of the Branches tab.
+pub fn branch_rows(state: &AppState) -> Vec<(usize, usize)> {
+    let now = crate::git::stats::now_ts();
+    let query = state.branch_query.to_lowercase();
+    let config = &state.config;
+    let mut rows: Vec<(usize, usize)> = Vec::new();
+    for (ri, repo) in state.repositories.iter().enumerate() {
+        let repo_name = state.display_path(&repo.path).to_lowercase();
+        for (bi, b) in repo.branches.iter().enumerate() {
+            let protected = crate::cleanup::branch_protection(repo, b, config).is_some();
+            let keep = match state.branch_filter {
+                BranchFilter::Cleanable => crate::cleanup::is_smart_candidate(repo, b, config),
+                BranchFilter::Merged => !protected && b.is_fully_merged(),
+                BranchFilter::Gone => !protected && b.is_dead,
+                BranchFilter::Stale => !protected && crate::cleanup::is_stale(b, config, now),
+                BranchFilter::Unmerged => !protected && b.has_unique_commits(),
+                BranchFilter::All => true,
+            };
+            let matches = query.is_empty()
+                || b.name.to_lowercase().contains(&query)
+                || repo_name.contains(&query);
+            if keep && matches {
+                rows.push((ri, bi));
+            }
+        }
+    }
+
+    let repos = &state.repositories;
+    let branch = |&(r, b): &(usize, usize)| &repos[r].branches[b];
+    rows.sort_by(|a, b| match state.branch_sort {
+        BranchSort::Repository => repos[a.0]
+            .path
+            .cmp(&repos[b.0].path)
+            .then_with(|| branch(a).name.cmp(&branch(b).name)),
+        BranchSort::Oldest => branch(a)
+            .last_commit_ts
+            .unwrap_or(i64::MAX)
+            .cmp(&branch(b).last_commit_ts.unwrap_or(i64::MAX)),
+        BranchSort::Name => branch(a)
+            .name
+            .cmp(&branch(b).name)
+            .then_with(|| repos[a.0].path.cmp(&repos[b.0].path)),
+    });
+    rows
 }
 
 /// One row of the details table.

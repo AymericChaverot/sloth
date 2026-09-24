@@ -84,15 +84,17 @@ impl Execution {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Repos,
+    Branches,
     Dashboard,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 2] = [Tab::Repos, Tab::Dashboard];
+    pub const ALL: [Tab; 3] = [Tab::Repos, Tab::Branches, Tab::Dashboard];
 
     pub fn title(self) -> &'static str {
         match self {
             Tab::Repos => "Repos",
+            Tab::Branches => "Branches",
             Tab::Dashboard => "Dashboard",
         }
     }
@@ -171,6 +173,72 @@ impl RepoSort {
     }
 }
 
+/// Which branches the Branches tab lists, cycled with `f`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BranchFilter {
+    /// Merged or gone, and not protected: what smart selection picks.
+    Cleanable,
+    Merged,
+    Gone,
+    Stale,
+    /// Not merged and not pushed: deleting them loses work.
+    Unmerged,
+    All,
+}
+
+impl BranchFilter {
+    pub const ALL: [BranchFilter; 6] = [
+        BranchFilter::Cleanable,
+        BranchFilter::Merged,
+        BranchFilter::Gone,
+        BranchFilter::Stale,
+        BranchFilter::Unmerged,
+        BranchFilter::All,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            BranchFilter::Cleanable => "cleanable",
+            BranchFilter::Merged => "merged",
+            BranchFilter::Gone => "gone",
+            BranchFilter::Stale => "stale",
+            BranchFilter::Unmerged => "unmerged",
+            BranchFilter::All => "all",
+        }
+    }
+
+    pub fn next(self) -> BranchFilter {
+        let i = Self::ALL.iter().position(|f| *f == self).unwrap_or(0);
+        Self::ALL[(i + 1) % Self::ALL.len()]
+    }
+}
+
+/// Sort order of the Branches tab, cycled with `s`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BranchSort {
+    Repository,
+    Oldest,
+    Name,
+}
+
+impl BranchSort {
+    pub fn label(self) -> &'static str {
+        match self {
+            BranchSort::Repository => "repository",
+            BranchSort::Oldest => "oldest first",
+            BranchSort::Name => "name",
+        }
+    }
+
+    pub fn next(self) -> BranchSort {
+        match self {
+            BranchSort::Repository => BranchSort::Oldest,
+            BranchSort::Oldest => BranchSort::Name,
+            BranchSort::Name => BranchSort::Repository,
+        }
+    }
+}
+
 pub struct AppState {
     pub repositories: Vec<RepoStatus>,
     pub tab: Tab,
@@ -189,6 +257,12 @@ pub struct AppState {
     pub repo_table: TableState,
     pub detail_index: usize,
     pub detail_table: TableState,
+    pub branch_filter: BranchFilter,
+    pub branch_sort: BranchSort,
+    /// Case-insensitive filter on repository and branch names.
+    pub branch_query: String,
+    pub branch_cursor: usize,
+    pub branch_table: TableState,
     pub graph_scroll_y: u16,
     pub graph_scroll_x: u16,
     /// Cleanup queue: items selected in any repository.
@@ -238,6 +312,11 @@ impl AppState {
             repo_table: TableState::default(),
             detail_index: 0,
             detail_table: TableState::default(),
+            branch_filter: BranchFilter::Cleanable,
+            branch_sort: BranchSort::Repository,
+            branch_query: String::new(),
+            branch_cursor: 0,
+            branch_table: TableState::default(),
             graph_scroll_y: 0,
             graph_scroll_x: 0,
             selection: Default::default(),

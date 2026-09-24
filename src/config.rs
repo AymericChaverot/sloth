@@ -21,6 +21,8 @@ pub struct Config {
     pub protected_branches: Vec<String>,
     /// Ignored files that a deep clean must never delete (gitignore patterns).
     pub deep_clean_keep: Vec<String>,
+    /// Branches whose last commit is older than this many days are "stale".
+    pub stale_days: u32,
 }
 
 impl Default for Config {
@@ -34,6 +36,7 @@ impl Default for Config {
             protected_branches: ["main", "master", "develop", "trunk", "release/*"]
                 .map(String::from)
                 .to_vec(),
+            stale_days: 90,
             deep_clean_keep: [".env", ".env.*", ".idea/", ".vscode/"]
                 .map(String::from)
                 .to_vec(),
@@ -52,6 +55,9 @@ protected_branches = ["main", "master", "develop", "trunk", "release/*"]
 
 # Untracked or ignored files a deep clean must never delete (gitignore syntax).
 deep_clean_keep = [".env", ".env.*", ".idea/", ".vscode/"]
+
+# Branches whose last commit is older than this many days are "stale".
+stale_days = 90
 
 # Directory names skipped while scanning for repositories.
 scan_exclude = ["node_modules", "target", ".venv", "vendor"]

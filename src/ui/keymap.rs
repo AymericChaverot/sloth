@@ -5,7 +5,7 @@ use crate::ui::state::{AppState, Focus, Tab};
 pub type Binding = (&'static str, &'static str);
 
 pub const GLOBAL: &[Binding] = &[
-    ("1-2 / Tab", "switch tab"),
+    ("1-9 / Tab", "switch tab"),
     ("?", "toggle this help"),
     ("x / Enter", "review & run the cleanup queue"),
     ("C", "clear the queue"),
@@ -40,6 +40,21 @@ pub const DETAILS: &[Binding] = &[
 
 pub const GRAPH: &[Binding] = &[("↑↓←→", "scroll"), ("f", "fullscreen"), ("Esc / g", "back")];
 
+pub const BRANCHES: &[Binding] = &[
+    ("↑↓ PgUp/Dn", "move"),
+    ("Space", "add to / remove from queue"),
+    ("a", "add every listed cleanable branch"),
+    ("A", "add every listed unprotected branch"),
+    (
+        "f",
+        "cycle filter: cleanable, merged, gone, stale, unmerged, all",
+    ),
+    ("s", "cycle sort: repository, oldest, name"),
+    ("/", "search repository or branch"),
+    ("v", "view diff"),
+    ("Enter", "open the branch in its repository"),
+];
+
 pub const DASHBOARD: &[Binding] = &[("1", "back to repositories")];
 
 pub const SECTIONS: &[(&str, &[Binding])] = &[
@@ -47,6 +62,7 @@ pub const SECTIONS: &[(&str, &[Binding])] = &[
     ("Repositories", REPOS),
     ("Details", DETAILS),
     ("Graph", GRAPH),
+    ("Branches (all repositories)", BRANCHES),
     ("Dashboard", DASHBOARD),
 ];
 
@@ -73,6 +89,15 @@ pub fn hints(state: &AppState) -> &'static [Binding] {
             ],
             Focus::GitGraph => &[("↑↓←→", "scroll"), ("f", "fullscreen"), ("Esc", "back")],
         },
+        Tab::Branches => &[
+            ("Space", "select"),
+            ("a", "select cleanable"),
+            ("f", "filter"),
+            ("s", "sort"),
+            ("/", "search"),
+            ("Enter", "open repo"),
+            ("x", "run queue"),
+        ],
         Tab::Dashboard => &[("1", "repos"), ("?", "help"), ("q", "quit")],
     }
 }
