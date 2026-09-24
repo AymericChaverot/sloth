@@ -9,6 +9,8 @@ pub const GLOBAL: &[Binding] = &[
     ("?", "toggle this help"),
     ("x / Enter", "review & run the cleanup queue"),
     ("C", "clear the queue"),
+    ("r", "refresh the marked (or focused) repositories"),
+    ("R", "rescan the directory"),
     ("t", "cycle theme"),
     ("u", "install available update"),
     ("q", "quit"),

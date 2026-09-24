@@ -1,6 +1,6 @@
 use crate::ui::loader::DiffTarget;
 use crate::ui::selection::ItemKind;
-use crate::ui::state::{AppState, Focus, Tab, UiAction};
+use crate::ui::state::{AppState, Focus, Refresh, Tab, UiAction};
 use crate::ui::views::{self, DetailRow};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use std::path::PathBuf;
@@ -182,6 +182,17 @@ fn global_key(state: &mut AppState, code: KeyCode) -> bool {
             }
         }
         KeyCode::Char('x') => request_queue_run(state),
+        KeyCode::Char('r') => {
+            let targets = state.action_targets();
+            if !targets.is_empty() {
+                state.notify(format!("Refreshing {} repo(s)…", targets.len()));
+                state.refresh = Some(Refresh::Repos(targets));
+            }
+        }
+        KeyCode::Char('R') => {
+            state.notify("Rescanning…");
+            state.refresh = Some(Refresh::Rescan);
+        }
         _ => return false,
     }
     true

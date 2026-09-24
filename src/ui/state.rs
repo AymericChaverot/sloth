@@ -146,6 +146,14 @@ pub enum UiAction {
     DeepClean,
 }
 
+/// Re-analysis requested by the user, carried out by the main loop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refresh {
+    Repos(Vec<PathBuf>),
+    /// Discover repositories again from scratch.
+    Rescan,
+}
+
 /// Sort order of the repository list, cycled with `s`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepoSort {
@@ -277,6 +285,7 @@ pub struct AppState {
     pub graph_maximized: bool,
     pub should_quit: bool,
     pub action: Option<UiAction>,
+    pub refresh: Option<Refresh>,
     pub is_scanning: bool,
     pub is_analyzing: bool,
     /// Drives spinner animations.
@@ -334,6 +343,7 @@ impl AppState {
             graph_maximized: false,
             should_quit: false,
             action: None,
+            refresh: None,
             is_scanning: true,
             is_analyzing: true,
             started: std::time::Instant::now(),

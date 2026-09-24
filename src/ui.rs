@@ -56,6 +56,10 @@ pub fn run_tui(
             start_execution(&mut state, action, &tx);
             dirty = true;
         }
+        if let Some(request) = state.refresh.take() {
+            refresh(&mut state, request, &worker);
+            dirty = true;
+        }
         request_loads(&mut state, &tx);
         if state.expire_toast() {
             dirty = true;
@@ -227,28 +231,46 @@ fn apply_event(state: &mut AppState, event: ScannerEvent, worker: &crate::worker
             execution.finished = true;
             state.selection.forget_done(&execution.results);
 
-            // Re-analyze what changed; keep the repository order stable.
+            // Re-analyze what changed.
             let mut touched: Vec<PathBuf> = Vec::new();
             for result in &execution.results {
                 if !touched.contains(&result.repo) {
                     touched.push(result.repo.clone());
                 }
             }
-            for repo in state
-                .repositories
-                .iter_mut()
-                .filter(|r| touched.contains(&r.path))
-            {
-                repo.analyzed = false;
-                repo.graph_lines = None;
-            }
-            state.is_analyzing = true;
-            worker.refresh(touched);
+            refresh(state, state::Refresh::Repos(touched), worker);
         }
         ScannerEvent::DiffLoaded { id, lines } => {
             if id == state.diff_request_id {
                 state.diff_lines = Some(lines);
             }
+        }
+    }
+}
+
+/// Re-analyzes some repositories, or rediscovers all of them. The selection
+/// is kept: items that no longer exist are dropped as results come in.
+fn refresh(state: &mut AppState, request: state::Refresh, worker: &crate::worker::Worker) {
+    match request {
+        state::Refresh::Repos(paths) => {
+            for repo in state
+                .repositories
+                .iter_mut()
+                .filter(|r| paths.contains(&r.path))
+            {
+                repo.analyzed = false;
+                repo.error = None;
+                repo.graph_lines = None;
+            }
+            state.is_analyzing = true;
+            worker.refresh(paths);
+        }
+        state::Refresh::Rescan => {
+            state.repositories.clear();
+            state.graph_loading.clear();
+            state.is_scanning = true;
+            state.is_analyzing = true;
+            worker.scan(state.root.clone(), state.config.scan_exclude.clone());
         }
     }
 }
