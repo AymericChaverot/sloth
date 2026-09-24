@@ -60,8 +60,9 @@ jobs:
       - name: Package (Windows)
         if: matrix.archive == 'zip'
         shell: pwsh
+        # Stored (uncompressed): v0.1.0's self-updater can't inflate deflated zips.
         run: |
-          Compress-Archive -Path "target/${{ matrix.target }}/release/sloth.exe" -DestinationPath "sloth-${{ matrix.target }}.zip"
+          python -c "import zipfile; zipfile.ZipFile('sloth-${{ matrix.target }}.zip', 'w', zipfile.ZIP_STORED).write('target/${{ matrix.target }}/release/sloth.exe', 'sloth.exe')"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
